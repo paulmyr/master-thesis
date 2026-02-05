@@ -1,0 +1,368 @@
+\documentclass{article}
+
+% Language setting
+\usepackage[english]{babel}
+
+% Set page size and margins
+\usepackage[letterpaper,top=2cm,bottom=2cm,left=3cm,right=3cm,marginparwidth=1.75cm]{geometry}
+
+% Useful packages
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{graphicx}
+\usepackage[colorlinks=true, allcolors=blue]{hyperref}
+\usepackage[backend=biber,style=ieee]{biblatex}
+\addbibresource{bibliography.bib}
+
+\title{Individual Plan}
+\author{Paul Mayer}
+
+\begin{document}
+\maketitle
+
+\section{Project Information}
+
+\begin{itemize}
+    \item Title: Surrogate Gradients for Gradient-Based Parameter Estimation in Simplified Neuron Models
+    \item Name and e-mail address: Paul Mayer, pmayer@kth.se
+    \item Examiner: Eric Frans\'en
+    \item Supervisor: Alexander Kozlov
+    \item Date: January 21, 2026
+    \item Keywords: Automatic Gradient Descent, Adaptive Exponential Integrate-and-Fire Model, Simplified Neuron Model, Surrogate Gradients, Parameter Estimation
+\end{itemize}
+
+\section{Background \& Objective}
+
+This project is conducted within computational neuroscience, specifically focusing on parameter estimation for simplified biophysical neuron models.
+Large-scale brain simulations require efficient methods for fitting neuron model parameters to experimental data.
+While sophisticated Hodgkin-Huxley-type models can precisely capture membrane behavior, they require enormous computational resources.
+On the other hand, simplified neuron models (like the Adaptive Exponential Integrate-and-Fire Model, AdEx) offer drastically lower computational cost while reproducing diverse firing patterns faithfully.
+This makes them prime candidates for whole-brain simulations.
+
+The project connects to recent developments in gradient-based optimization for neuron models.
+The Jaxley framework demonstrated success using automatic differentiation for HH-type models.
+However, it lacks support for simplified models due to their non-differentiable spike mechanism (the discrete reset when membrane potential crosses threshold).
+Surrogate gradients, originally developed for training spiking neural networks, offer a potential solution by replacing discontinuous derivatives with smooth approximations during backpropagation.
+This requires loss functions to be differentiable as well.
+Wheras non-gradient based parameter optimization strategies can rely on non-differentiable feature based loss functions, gradient-based differentiation requires differentiable loss functions.
+This opens up for the question on what loss function design is required to achieve successful parameter fittings.
+
+To study loss function design, signal processing techniques might provide valuable insight.
+But mainly, this work bridges techniques from machine learning (surrogate gradients) with biophysical modeling, addressing a gap in current tools.
+It is of interest to computational neuroscientists working toward large-scale brain simulations where efficient and accurate parameter fitting is essential.
+
+The project will continue and extend on the implementation and first results gained from the 'Project Course in High Performance Computing'.
+
+\section{Research Question \& Method}
+
+The main question I want to answer is: ``Can gradient-based parameter optimization produce useful parameter updates for the AdEx model?''
+
+Related questions that will also be studied in this project are:
+(1) What loss function design is required to achieve successful gradient-based optimization for simplified neuron models?
+(2) How do different surrogate gradient functions affect optimization convergence and parameter quality?
+(3) How does gradient-based optimization compare to derivative-free methods in terms of accuracy and computational efficiency?
+
+\subsection{Objectives}
+
+The following milestones need to be completed in order to answer the research question:
+
+\begin{itemize}
+    \item Implement AdEx model using a bio-physical neuron simulator that allows automatic differentiation.
+    \item Extend AdEx implementation to allow for surrogate gradients.
+    \item Design differentiable loss function that allows successful gradient based optimization.
+    \item Implement testing framework that allows optimization on multiple experimental traces.
+    \item Measure computational efficiency of optimization method
+    \item Compare gradient-based strategie against feature based state-of-the-art genetic / non-differentiable alternatives.
+\end{itemize}
+
+\subsection{Tasks}
+Some of the task have already been started within the HPC project course.
+For example, I will use my previously implemented AdEx model.
+The author identified these main tasks and their respective challenges:
+\begin{itemize}
+  \item building a differentiable loss function --- this will require careful study of existing approaches e.g.
+    in signal processing or machine learning domains.
+  \item hyperparameter tuning --- wdentifing what influence is due to the non-convex paramter space, to the actual optimizers and to the loss function may be difficult.
+  \item building the testing framework --- this will be mostly an implementation overhead. I don't expect much difficulty, however, the main challenge may be the result of different data formats or signal lengths --- handling time series data might be challenging.
+  \item measuring computational efficiency --- can be highly system and data dependent. Finding good testing metrics might be challenging.
+  \item finding other state-of-the-art optimizers --- will not be as easy since there is no standard benchmark set for parameter tuning in neuroscience. Not all code may be easily accessible as well.
+\end{itemize}
+
+\subsection{Method}
+
+The methodology follows an experimental computational approach combining implementation, validation, and systematic evaluation:
+
+\begin{enumerate}
+  \item Implementation within Jaxley Framework\\
+The AdEx model will be implemented as a Jaxley channel using the JAX framework for automatic differentiation.
+Surrogate gradients will be implemented using JAX's \verb|custom_vjp| functionality, which allows defining custom vector-Jacobian products.
+Three surrogate functions will be explored: sigmoid, exponential, and SuperSpike surrogates.
+This approach is appropriate because Jaxley has demonstrated success for HH-type models, and extending it to simplified models maintains compatibility with existing neuroscience workflows.
+  \item Implementation Verification\\
+The AdEx implementation will be validated against Brian2, a widely-used reference simulator.
+Verification metrics include visual comparison of voltage traces, spike count matching, and spike timing differences (target: <1ms).
+This cross-validation approach ensures implementation correctness before proceeding to optimization experiments.
+  \item Loss Function Development\\
+Three loss function approaches will be investigated:
+\begin{itemize}
+  \item MSE-based and absolute-error-based loss on raw voltage traces (baseline)
+  \item Feature-based loss adapted from Guarino et al. [9], capturing spike timing, interspike intervals, firing rate, and subthreshold behavior
+  \item Test (smooth) dynamic time warping as loss function alternative.
+\end{itemize}
+The feature-based approach requires developing differentiable approximations of discrete spike detection operations using soft thresholds and weighted averages.
+This is necessary because gradient-based optimization requires end-to-end differentiability.
+\item Systematic Evaluation:\\
+Parameter optimization will be evaluated using intracellular recordings from striatal projection neurons.
+Performance will be assessed through
+(1) visual comparison of fitted vs. experimental traces and
+(2) coincidence factor $\Gamma$ for spike timing precision (benchmark: $Gamma$ > 0.5) and
+(3) computational cost measurements.
+\item Comparative Analysis:\\
+Gradient-based results will be compared against derivative-free baselines (genetic algorithms, grid search) to assess relative performance and computational efficiency.
+\end{enumerate}
+This methodology is appropriate because it follows a systematic progression from implementation to validation to evaluation, allowing identification of specific failure modes and enabling iterative improvement of the loss function design.
+
+\subsection{Ethics and Sustainability}
+\textbf{Ethics:}
+This project uses publicly available experimental data from prior research \cite{Johansson2020}.
+No new animal experiments are conducted.
+The computational methods developed could ultimately reduce the need for animal experiments by enabling better in-silico modeling and prediction of neural behavior.\\
+\textbf{Sustainability:}
+The project addresses computational sustainability in neuroscience.
+Simplified models like AdEx require orders of magnitude less computational resources than detailed HH-type models.
+Enabling efficient parameter fitting for these models could significantly reduce the energy consumption required for large-scale brain simulations.
+Additionally, gradient-based optimization, if successful, would be more computationally efficient than evolutionary algorithms that require many more simulation evaluations.
+No significant ethical concerns are raised by this work.
+
+\subsection{Limitations}
+
+The following are explicitly out of scope for this project:
+
+\begin{enumerate}
+    \item \textbf{Multi-compartment models:} Only single-compartment AdEx neurons will be considered. Extension to complex morphologies (dendrites, axons) is not included.
+    \item \textbf{Network-level optimization:} The project focuses on single-neuron parameter fitting. Fitting parameters for networks of neurons is not addressed.
+    \item \textbf{All neuron types:} Evaluation will focus on striatal projection neurons. Comprehensive validation across diverse neuron types (cortical, cerebellar, etc.) is limited by available data and time.
+    \item \textbf{Hyperparameter optimization:} While some hyperparameter exploration will be conducted, exhaustive optimization of surrogate gradient parameters, learning rates, and loss function weights is not the primary focus.
+    \item \textbf{Real-time or embedded applications:} The implementation targets research use in Python/JAX, not deployment in real-time systems.
+    \item \textbf{Comparison with existing methods:} Only selected baseline methods (Nelder-mead, grid search) will be compared. Comprehensive benchmarking against all published optimization approaches is not feasible.
+    \item \textbf{Theoretical analysis:} The focus is empirical. Formal convergence proofs or theoretical analysis of surrogate gradient approximation quality are not included.
+\end{enumerate}
+
+\subsection{Risks}
+
+\begin{table}[ht]
+\centering
+\small
+\begin{tabular}{p{3.5cm}ccp{5.5cm}}
+\toprule
+\textbf{Risk} & \textbf{Impact} & \textbf{Likelihood} & \textbf{Mitigation} \\
+\midrule
+Gradient-based optimization fails to produce useful parameters & High & Medium & The preliminary work already shows this is challenging. If optimization consistently fails, the project will pivot to documenting failure modes and characterizing the loss landscape, which is itself a valuable contribution. \\
+\midrule
+Non-convex loss landscape prevents convergence & Medium & High & Implement multiple initialization strategies, learning rate schedules, and gradient clipping. Explore different surrogate gradient functions and hyperparameters. Document which conditions enable vs.\ prevent convergence. \\
+\midrule
+Differentiable feature extraction introduces bias & Medium & Medium & Validate soft feature approximations against hard (non-differentiable) counterparts. Quantify approximation errors and their impact on optimization. \\
+\midrule
+Limited experimental data availability & Medium & Low & The Johansson and Silberberg dataset \cite{Johansson2020} is already available. If additional data is needed, publicly available datasets can be used. \\
+\midrule
+Computational resource constraints & Low & Low & The project uses simplified models specifically because they are computationally efficient. Standard laptop hardware is sufficient for most experiments. EECS Cluster can also be used as backup and for computations using GPUs.\\
+\bottomrule
+\end{tabular}
+\caption{Risk Assessment}
+\label{tab:risks}
+\end{table}
+
+\textbf{Contingency plan:} If gradient-based optimization proves fundamentally unsuitable for AdEx parameter estimation, the project can still contribute by (1) documenting why this approach fails, (2) characterizing loss function requirements, and (3) providing a validated, differentiable AdEx implementation for future research.
+
+\section{Evaluation \& News Value}
+
+The project objectives will be evaluated using the following criteria:
+
+\subsection{Quantitative Measures}
+
+\begin{enumerate}
+  \item \textbf{Coincidence Factor ($\Gamma$):} The primary metric for parameter fitting quality. Success threshold: $\Gamma > 0.5$, matching or approaching the $\Gamma \approx 0.82$--$0.83$ achieved by Jolivet et al.\ \cite{Jolivet2008} for well-fitted AdEx models.
+    \item \textbf{Spike count accuracy:} Percentage of fitted models producing the correct number of spikes ($\pm 1$ spike tolerance).
+    \item \textbf{First spike timing error:} Mean absolute error in predicting the first spike time (target: $<5$ms).
+    \item \textbf{Convergence rate:} Number of optimization iterations required to reach a stable loss value.
+    \item \textbf{Computational efficiency:} Wall-clock time per optimization run compared to genetic algorithm baselines.
+\end{enumerate}
+
+\subsection{Qualitative Measures}
+
+\begin{enumerate}
+    \item \textbf{Loss function characterization:} Documentation of which loss function designs enable vs.\ prevent successful optimization.
+    \item \textbf{Surrogate gradient comparison:} Qualitative assessment of how different surrogate functions affect optimization behavior.
+    \item \textbf{Failure mode analysis:} Identification and documentation of systematic failure patterns (e.g., convergence to non-spiking solutions).
+\end{enumerate}
+
+\subsection{Success Criteria}
+
+\begin{itemize}
+    \item \textbf{Full success:} Gradient-based optimization achieves $\Gamma > 0.5$ with computational advantage over baselines.
+    \item \textbf{Partial success:} Gradient-based optimization produces spiking behavior with correct spike count but limited timing precision.
+    \item \textbf{Documented failure:} Clear characterization of why gradient-based optimization fails, with recommendations for future work.
+\end{itemize}
+
+Any of these outcomes constitutes a valid scientific contribution.
+
+\subsection{Scientific Relevance}
+
+This work addresses a methodological gap in computational neuroscience: the lack of gradient-based parameter fitting tools for simplified neuron models. While Jaxley has demonstrated success for HH-type models, simplified models like AdEx remain limited to derivative-free optimization methods despite their importance for large-scale brain simulations.
+
+\subsection{Innovation/News Value}
+
+\begin{enumerate}
+    \item \textbf{First systematic study} of loss function requirements for gradient-based optimization of simplified neuron models in biophysical simulation contexts.
+    \item \textbf{Differentiable AdEx implementation} in Jaxley, enabling the broader community to use gradient-based methods for simplified models.
+    \item \textbf{Bridge between SNN training and biophysical fitting:} Demonstrates whether techniques from machine learning (surrogate gradients) can be transferred to neuroscience applications.
+    \item \textbf{Practical guidance} on loss function design for researchers attempting similar approaches.
+\end{enumerate}
+
+\subsection{Target Audience}
+
+\begin{enumerate}
+    \item Computational neuroscientists working on large-scale brain simulations who need efficient parameter fitting methods.
+    \item Developers of neural simulation frameworks (Jaxley, Brian2, NEST) interested in extending automatic differentiation support.
+    \item Machine learning researchers working on spiking neural networks who may benefit from insights on loss function design.
+    \item Researchers working toward whole-brain simulation using simplified models.
+\end{enumerate}
+
+\section{Pre-study}
+
+\subsection{Literature Study Focus Areas}
+
+\begin{enumerate}
+  \item \textbf{Simplified neuron models:} Mathematical formulation, parameter interpretation, and fitting approaches for AdEx and related models \cite{Brette2005, Naud2008}.
+  \item \textbf{Surrogate gradient methods:} Theory and practice of surrogate gradients for spiking neural networks \cite{Neftci2019, Zenke2018, Gygax2025}. Recent work by Yu et al.\ \cite{Yu2025} demonstrates that surrogate gradients can enable learning from temporal spike patterns beyond firing rates, which is directly relevant to whether gradient-based optimization can capture spike timing precision.
+  \item \textbf{Automatic differentiation for neuroscience:} Jaxley framework and related approaches \cite{Deistler2025, Jones2024}.
+  \item \textbf{Parameter optimization for neuron models:} Evolutionary algorithms, grid search, and other derivative-free methods \cite{VanGeit2008, Guarino2025}.
+  \item \textbf{Loss function design:} Feature-based losses, spike train metrics, and differentiable approximations \cite{Jolivet2008, Guarino2025}.
+  \item \textbf{Differentiable time series alignment:} Soft-DTW \cite{Cuturi2017} provides a differentiable version of dynamic time warping that enables gradient-based optimization for time series comparison---potentially applicable as a loss function for voltage trace fitting that is robust to small temporal misalignments.
+  \item \textbf{Time warping for neural data:} Methods for temporal alignment in neural recordings \cite{Williams2020, Lawlor2018} address the problem of trial-to-trial timing variability in neural responses. Williams et al.\ \cite{Williams2020} developed robust time warping methods for large-scale neural recordings, while Lawlor et al.\ \cite{Lawlor2018} combined time warping with neural encoding models. These approaches may inform loss function design that accounts for temporal variability.
+  \item \textbf{Spike train distance metrics:} Classical metrics for comparing spike trains, including the van Rossum metric \cite{Houghton2009}, provide mathematically grounded ways to quantify spike train similarity. Understanding these metrics may guide the design of differentiable approximations suitable for gradient-based optimization.
+\end{enumerate}
+
+\subsection{Knowledge Acquisition}
+
+\begin{itemize}
+    \item Review of primary literature in computational neuroscience and machine learning
+    \item Study of Jaxley and JAX documentation and source code
+    \item Analysis of existing AdEx parameter fitting implementations
+\end{itemize}
+
+\subsection{Preliminarily Important References}
+
+\begin{itemize}
+    \item Deistler et al. (2025) \cite{Deistler2025} --- Jaxley framework
+    \item Neftci et al.\ (2019) \cite{Neftci2019} --- Surrogate gradient learning review
+    \item Brette \& Gerstner (2005) \cite{Brette2005} --- Original AdEx paper
+    \item Guarino et al.\ (2025) \cite{Guarino2025} --- Feature-based loss function
+    \item Jolivet et al.\ (2008) \cite{Jolivet2008} --- Coincidence factor metric
+    \item Zenke \& Ganguli (2018) \cite{Zenke2018} --- SuperSpike surrogate
+    \item Cuturi \& Blondel (2017) \cite{Cuturi2017} --- Soft-DTW differentiable loss
+    \item Yu et al.\ (2025) \cite{Yu2025} --- Surrogate gradients for spike timing learning
+    \item Williams et al.\ (2020) \cite{Williams2020} --- Time warping for neural recordings
+    \item Lawlor et al.\ (2018) \cite{Lawlor2018} --- Time-warp-Poisson neural models
+    \item Houghton (2009) \cite{Houghton2009} --- Van Rossum spike train metric
+\end{itemize}
+
+\section{Conditions \& Schedule}
+
+Resources Required:
+
+\begin{itemize}
+    \item Hardware: Personal laptop (Apple M1 Silicon) - sufficient for most experiments
+    \item Server: Access to EECS Cluster --- necessary for GPU runtime tests
+    \item Software: Python 3.14+, JAX, Jaxley 0.12+, standard scientific Python stack
+    \item Data: Data: Intracellular recordings from Johansson Silberberg \cite{Johansson2020} --- publicly available
+    \item Code: Existing implementation from HPC project course (AdEx model, surrogate gradients)
+\end{itemize}
+
+Supervisor Involvement:
+
+Alexander Kozlov will provide guidance on:
+
+\begin{itemize}
+    \item Neuroscience domain knowledge and biological interpretation
+    \item Connection to ongoing striatum modeling work
+    \item Feedback on experimental design and results interpretation
+\end{itemize}
+
+Regular meetings (approximately bi-weekly) will be scheduled to discuss progress and address challenges.
+
+\subsection{Timeline}
+See table~\ref{tab:timeline}.
+
+\begin{table}[ht]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{|p{1.1cm}|c|c|p{2.2cm}|p{2.2cm}|p{2.2cm}|p{2.2cm}|p{2.2cm}|p{2.2cm}|}
+\hline
+\textbf{Month} & \textbf{Week} & \textbf{Days} & \textbf{Pilot testing} & \textbf{Main step} & \textbf{Substeps} & \textbf{Deadlines} & \textbf{What I should have decided} & \textbf{Thesis writing} \\
+\hline
+\multirow{4}{*}{February}
+& 6 & 2--6 & & \multirow{2}{*}{\parbox{2.2cm}{Literature review \& pre-study}} & Complete individual plan. Refine research questions. & Send individual plan to supervisor. & & Related work \\
+\cline{2-4}\cline{6-9}
+& 7 & 9--13 & & & Write background section. Review surrogate gradient literature. & Get OK on individual plan from examiner. & & Related work \\
+\cline{2-9}
+& 8 & 16--20 & \multirow{2}{*}{\parbox{2.2cm}{Test different surrogate gradient functions}} & \multirow{4}{*}{\parbox{2.2cm}{Loss function development}} & Implement differentiable feature extraction. Test MSE baseline. & & Which surrogate gradient function to use as default. & \multirow{2}{*}{Background} \\
+\cline{2-3}\cline{6-8}
+& 9 & 23--27 & & & Implement feature-based loss. Test DTW alternatives. & Loss function v1 complete. & Loss function architecture decision. & \\
+\hline
+\multirow{5}{*}{March}
+& 10 & 2--6 & \multirow{2}{*}{\parbox{2.2cm}{Parameter sensitivity analysis}} & \multirow{4}{*}{\parbox{2.2cm}{Optimization experiments}} & Single trace optimization. Hyperparameter tuning. & & & \multirow{2}{*}{\parbox{2.2cm}{Background \& Method}} \\
+\cline{2-3}\cline{6-8}
+& 11 & 9--13 & & & Document convergence behavior. Analyze failure modes. & Initial results available. & Optimal learning rate and surrogate slope. & \\
+\cline{2-4}\cline{6-9}
+& 12 & 16--20 & \multirow{2}{*}{\parbox{2.2cm}{Test on different neuron recordings}} & & Build multi-trace testing framework. & & & \multirow{2}{*}{Method} \\
+\cline{2-3}\cline{6-8}
+& 13 & 23--27 & & & Evaluate on multiple experimental traces. & Testing framework complete. & Evaluation protocol finalized. & \\
+\cline{2-9}
+& 14 & 30--3 & & Break / buffer & & & & \\
+\hline
+\multirow{4}{*}{April}
+& 15 & 6--10 & \multirow{2}{*}{\parbox{2.2cm}{Compare GA implementations}} & \multirow{2}{*}{\parbox{2.2cm}{Baseline comparisons}} & Implement genetic algorithm baseline. & & & \multirow{2}{*}{Results} \\
+\cline{2-3}\cline{6-8}
+& 16 & 13--17 & & & Run comparative experiments. Document accuracy differences. & Comparative analysis complete. & Which baseline methods to include. & \\
+\cline{2-9}
+& 17 & 20--24 & & \multirow{3}{*}{\parbox{2.2cm}{Efficiency measurements}} & Measure wall-clock time. Profile GPU vs CPU. & & & \multirow{2}{*}{Discussion} \\
+\cline{2-4}\cline{6-8}
+& 18 & 27--1 & & & Convergence rate analysis. & & & \\
+\hline
+\multirow{4}{*}{May}
+& 19 & 4--8 & & & Final experiments. & All experiments complete. & & Results section \\
+\cline{2-9}
+& 20 & 11--15 & & \multirow{2}{*}{\parbox{2.2cm}{Thesis writing}} & Complete results section. & & & \multirow{2}{*}{\parbox{2.2cm}{Working on all parts}} \\
+\cline{2-4}\cline{6-8}
+& 21 & 18--22 & & & Complete discussion and conclusion. & Draft complete. Send to supervisor. & & \\
+\cline{2-9}
+& 22 & 25--29 & & Break / buffer & & & & \\
+\hline
+\multirow{2}{*}{June}
+& 23 & 1--5 & & \multirow{2}{*}{\parbox{2.2cm}{Revision \& submission}} & Address feedback. Final revisions. & Send final version to examiner. & & Final revision \\
+\cline{2-4}\cline{6-9}
+& 24 & 8--12 & & & Prepare presentation. & Thesis submitted. & & \\
+\hline
+\end{tabular}
+\caption{Project Timeline}
+\label{tab:timeline}
+\end{table}
+
+\section{Use of Generative AI}
+
+Generative AI (Claude, Anthropic) was used in the preparation of this individual plan for:
+
+\begin{enumerate}
+    \item Document formatting: Assistance in organizing and formatting the plan according to the template requirements.
+    \item Writing refinement: Improving clarity and conciseness of technical and non-technical descriptions.
+\end{enumerate}
+
+All content was reviewed and validated by the author.
+The scientific content, research questions, and methodology are the author's own work, building on preliminary results from the HPC project course.
+
+\printbibliography
+
+\end{document}

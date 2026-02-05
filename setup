@@ -1,25 +1,25 @@
 #!/bin/bash
 
-echo 
+echo
 echo "==========================================================="
-echo "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * *" 
+echo "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * *"
 echo "*                                                         *"
 echo "*  Initialize submodules                                  *"
 echo "*                                                         *"
-echo "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * *" 
-echo 
+echo "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * *"
+echo
 
 git submodule update --init --recursive
 
-echo 
-echo "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * *" 
+echo
+echo "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * *"
 echo "*                                                         *"
 echo "* Install python packages                                 *"
 echo "*                                                         *"
-echo "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * *" 
-echo 
+echo "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * *"
+echo
 
-python -m venv .venv
+python3.14 -m venv .venv
 source .venv/bin/activate
 
 pip install -r requirements.txt
@@ -30,8 +30,8 @@ pip install -e ./3_jaxley
 #pip install jax[cuda12]
 #pip install jax[cuda13]
 
-echo 
-echo "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * *" 
+echo
+echo "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * *"
 echo "*                                                         *"
 echo "* activate environment using \`source .venv/bin/activate\`  *"
 echo "*                                                         *"

@@ -1,3 +1,32 @@
+*.DS_Store
+
+# LaTeX
+
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.out
+*.pdf
+*.run.xml
+*.synctex.gz
+*.cls
+*.acn
+*.acr
+*.alg
+*.bcf-SAVE-ERROR
+*.ist
+*.lof
+*.lol
+*.lot
+*.mw
+*.tdn
+*.tdo
+*.tld
+*.tlg
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

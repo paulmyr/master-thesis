@@ -1,0 +1,15 @@
+*.aux
+*.bbl
+*.blg
+*.log
+*.toc
+*.bcf
+*.run.xml
+*~
+
+exempelavhandling.pdf
+examplethesis.pdf
+
+README_author.tex
+*README_notes*
+
