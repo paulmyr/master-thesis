@@ -20,8 +20,6 @@ from loss import MSELossConfig, mse_loss
 # sys.path.insert(0, '/Users/paulmayer/Projects/university/35_project_course/3_jaxley')
 
 
-
-
 # =============================================================================
 # Setup
 # =============================================================================

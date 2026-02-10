@@ -20,7 +20,7 @@ from pathlib import Path
 from config.presets import describe_presets, get_preset
 from runner.experiment import ExperimentRunner
 
-DATA_DIRECTORY = "/Users/paulmayer/Projects/university/40_thesis/4_data/"
+DATA_DIRECTORY = Path(__file__).resolve().parent.parent / "4_data"
 
 
 def main():

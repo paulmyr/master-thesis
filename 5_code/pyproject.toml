@@ -1,0 +1,31 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: Tests requiring Jaxley/Brian2 simulation",
+    "jaxley: Tests requiring Jaxley framework",
+]
+addopts = [
+    "-vv",
+    "--tb=short",
+    #"--tb=long", # switch when debugging a complex failure
+    "--strict-markers",
+    #"-m", "not slow", # skip Jaxley/Brian2 tests
+]
+
+filterwarnings = [
+    "ignore::DeprecationWarning:jax",
+    "ignore::DeprecationWarning:jaxlib",
+]
+
+log_cli = false
+log_cli_level = "WARNING"
+
+[tool.pytest-clarity]
+max-column-width = 120
+force-enable-color = true
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-clarity",
+]
