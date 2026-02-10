@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Loss Function Testing Framework &mdash; Architecture Overview</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1a1a2e;
+    --accent: #2563eb;
+    --accent-light: #dbeafe;
+    --border: #cbd5e1;
+    --muted: #64748b;
+    --green: #16a34a;
+    --orange: #ea580c;
+    --red: #dc2626;
+    --purple: #7c3aed;
+    --code-bg: #f1f5f9;
+    --card-bg: #f8fafc;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: var(--fg);
+    background: var(--bg);
+    line-height: 1.6;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 2rem 2.5rem;
+    font-size: 14px;
+  }
+
+  h1 {
+    font-size: 1.8rem;
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+    color: var(--accent);
+  }
+  h1 + p { color: var(--muted); margin-bottom: 2rem; font-size: 0.95rem; }
+
+  h2 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin: 2.5rem 0 1rem 0;
+    padding-bottom: 0.4rem;
+    border-bottom: 2px solid var(--accent);
+    color: var(--fg);
+    page-break-after: avoid;
+  }
+
+  h3 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin: 1.5rem 0 0.5rem 0;
+    color: var(--fg);
+    page-break-after: avoid;
+  }
+
+  p { margin-bottom: 0.75rem; }
+
+  /* ---- directory tree ---- */
+  .tree {
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 0.82rem;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    overflow-x: auto;
+    line-height: 1.55;
+    white-space: pre;
+    page-break-inside: avoid;
+  }
+  .tree .comment { color: var(--muted); font-style: italic; }
+  .tree .dir     { color: var(--accent); font-weight: 600; }
+  .tree .file    { color: var(--fg); }
+  .tree .hl      { background: var(--accent-light); border-radius: 3px; padding: 0 3px; }
+
+  /* ---- class cards ---- */
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem; margin: 1rem 0; }
+  .cards.triple { grid-template-columns: 1fr 1fr 1fr; }
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.85rem 1rem;
+    page-break-inside: avoid;
+  }
+  .card.full { grid-column: 1 / -1; }
+  .card-title {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-weight: 700;
+    font-size: 0.92rem;
+    color: var(--accent);
+    margin-bottom: 0.4rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .card-title .badge {
+    font-size: 0.65rem;
+    font-weight: 600;
+    background: var(--accent);
+    color: white;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .card-title .badge.td   { background: var(--green); }
+  .card-title .badge.cls  { background: var(--purple); }
+  .card-title .badge.func { background: var(--orange); }
+  .card dl { display: grid; grid-template-columns: auto 1fr; gap: 0.1rem 0.6rem; font-size: 0.82rem; }
+  .card dt { font-family: monospace; color: var(--muted); white-space: nowrap; }
+  .card dd { color: var(--fg); }
+  .card .sep { grid-column: 1 / -1; border-top: 1px solid var(--border); margin: 0.35rem 0; }
+  .card ul { font-size: 0.82rem; padding-left: 1.1rem; margin: 0; }
+  .card ul li { margin-bottom: 0.15rem; }
+  .card code { font-size: 0.8rem; background: var(--code-bg); padding: 1px 4px; border-radius: 3px; }
+
+  /* ---- flow diagram ---- */
+  .flow-diagram {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.78rem;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.2rem 1.5rem;
+    overflow-x: auto;
+    white-space: pre;
+    line-height: 1.5;
+  }
+
+  /* ---- key points ---- */
+  .key-points {
+    background: var(--accent-light);
+    border-left: 4px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    padding: 1rem 1.25rem;
+    margin: 1.5rem 0;
+  }
+  .key-points ul { padding-left: 1.2rem; }
+  .key-points li { margin-bottom: 0.4rem; font-size: 0.9rem; }
+  .key-points strong { color: var(--accent); }
+
+  /* ---- section dividers ---- */
+  .layer-label {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: white;
+    background: var(--accent);
+    padding: 2px 10px;
+    border-radius: 4px;
+    margin-bottom: 0.6rem;
+  }
+  .layer-label.core    { background: var(--green); }
+  .layer-label.loss    { background: var(--orange); }
+  .layer-label.train   { background: var(--purple); }
+  .layer-label.runner  { background: #0d9488; }
+
+  /* ---- print ---- */
+  @media print {
+    body { padding: 0.5cm; font-size: 12px; max-width: 100%; }
+    h2 { margin-top: 1.5rem; }
+    .cards { gap: 0.5rem; }
+    .flow-diagram, .tree { font-size: 0.72rem; padding: 0.7rem 1rem; }
+  }
+
+  /* ---- table ---- */
+  table.modules {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    margin: 1rem 0;
+  }
+  table.modules th {
+    text-align: left;
+    background: var(--accent);
+    color: white;
+    padding: 0.45rem 0.7rem;
+    font-weight: 600;
+  }
+  table.modules th:first-child { border-radius: 6px 0 0 0; }
+  table.modules th:last-child  { border-radius: 0 6px 0 0; }
+  table.modules td {
+    padding: 0.4rem 0.7rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  table.modules tr:nth-child(even) td { background: var(--card-bg); }
+  table.modules code { font-size: 0.8rem; }
+</style>
+</head>
+<body>
+
+<h1>Loss Function Testing Framework</h1>
+<p>Architecture overview for the AdEx gradient-based parameter optimization codebase &mdash; <code>5_code/</code></p>
+
+<!-- ============================================================ -->
+<h2>1. Module Responsibilities</h2>
+
+<table class="modules">
+  <thead>
+    <tr><th>Module</th><th>File(s)</th><th>Responsibility</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Entry point</strong></td>
+      <td><code>main.py</code></td>
+      <td>CLI argument parsing (argparse). Dispatches to <code>ExperimentRunner</code> via <code>--quick</code>, <code>--trace</code>, or <code>--list-presets</code>.</td>
+    </tr>
+    <tr>
+      <td><strong>config</strong></td>
+      <td><code>experiment.py</code><br><code>presets.py</code></td>
+      <td>Canonical experiment schema (<code>ExperimentConfig</code>, <code>ExperimentResult</code>) and 9 named preset configurations.</td>
+    </tr>
+    <tr>
+      <td><strong>core</strong></td>
+      <td><code>data.py</code><br><code>parameters.py</code><br><code>simulation.py</code></td>
+      <td>Domain primitives: trace loading &amp; preprocessing, AdEx parameter sets &amp; bounds, Jaxley/Brian2 simulation wrappers.</td>
+    </tr>
+    <tr>
+      <td><strong>loss</strong></td>
+      <td><code>guarino.py</code><br><code>mse.py</code><br><code>dtw.py</code></td>
+      <td>Differentiable loss functions. Guarino: 8-feature extraction via soft spike detection. MSE: direct voltage comparison. Soft-DTW: differentiable dynamic time warping + MAE.</td>
+    </tr>
+    <tr>
+      <td><strong>training</strong></td>
+      <td><code>trainer.py</code></td>
+      <td>Unified training loop: cell setup with <code>make_trainable()</code>, optimizer creation (Adam/SGD/RMSProp via optax), gradient descent with parameter clipping.</td>
+    </tr>
+    <tr>
+      <td><strong>evaluation</strong></td>
+      <td><code>coincidence.py</code></td>
+      <td>Coincidence factor &Gamma; (Jolivet et al. 2008), intrinsic reliability, global performance metric.</td>
+    </tr>
+    <tr>
+      <td><strong>runner</strong></td>
+      <td><code>experiment.py</code><br><code>evaluator.py</code></td>
+      <td>Orchestration (<code>ExperimentRunner</code>): wires data&rarr;training&rarr;evaluation&rarr;plotting&rarr;saving. <code>Evaluator</code> computes metrics &amp; generates matplotlib figures.</td>
+    </tr>
+    <tr>
+      <td><strong>plotting</strong></td>
+      <td><code>plots.py</code></td>
+      <td>Standalone plotting helpers: voltage traces, spike rasters, Brian2/Jaxley comparison grids, training curves, fit results, &Gamma; bar charts.</td>
+    </tr>
+  </tbody>
+</table>
+
+
+<!-- ============================================================ -->
+<h2>2. Directory Structure</h2>
+
+<div class="tree"><span class="dir">5_code/</span>
+<span class="hl"><span class="file">main.py</span></span>                        <span class="comment">Entry point (argparse CLI)</span>
+<span class="file">__init__.py</span>
+<span class="dir">config/</span>
+    <span class="file">__init__.py</span>
+    <span class="file">experiment.py</span>              <span class="comment">ExperimentConfig, ExperimentResult, GuarinoWeights</span>
+    <span class="file">presets.py</span>                 <span class="comment">9 named presets + get_preset(), describe_presets()</span>
+<span class="dir">core/</span>
+    <span class="file">__init__.py</span>
+    <span class="file">data.py</span>                    <span class="comment">TraceData, load_trace(), detect_spikes()</span>
+    <span class="file">parameters.py</span>              <span class="comment">DEFAULT_PARAMS, PARAM_BOUNDS, AdExParams, ParamBounds</span>
+    <span class="file">simulation.py</span>              <span class="comment">SimulationResult, create_adex_cell(), simulate_*()</span>
+<span class="dir">loss/</span>
+    <span class="file">__init__.py</span>
+    <span class="file">guarino.py</span>                 <span class="comment">Feature-based loss (soft spike features), GuarinoFeatures</span>
+    <span class="file">mse.py</span>                     <span class="comment">MSE voltage loss, MSELossConfig</span>
+    <span class="file">dtw.py</span>                     <span class="comment">Soft-DTW + MAE loss, SoftDTWLossConfig</span>
+<span class="dir">training/</span>
+    <span class="file">__init__.py</span>
+    <span class="file">trainer.py</span>                 <span class="comment">TrainingConfig, TrainingResult, setup_trainable_cell(), train()</span>
+<span class="dir">evaluation/</span>
+    <span class="file">__init__.py</span>
+    <span class="file">coincidence.py</span>             <span class="comment">CoincidenceResult, coincidence_factor() (&Gamma;)</span>
+<span class="dir">runner/</span>
+    <span class="file">__init__.py</span>
+    <span class="file">experiment.py</span>              <span class="comment">ExperimentRunner (orchestrator), TrainingProgress</span>
+    <span class="file">evaluator.py</span>               <span class="comment">Evaluator, EvaluationMetrics, plot methods</span>
+<span class="dir">plotting/</span>
+    <span class="file">__init__.py</span>
+    <span class="file">plots.py</span>                   <span class="comment">Standalone matplotlib helpers</span>
+<span class="dir">results/</span>                       <span class="comment">Timestamped output directories</span>
+<span class="dir">notebooks/</span>                     <span class="comment">Jupyter notebooks</span>
+</div>
+
+
+<!-- ============================================================ -->
+<h2>3. Class &amp; Dataclass Diagram</h2>
+
+<!-- ---- Config layer ---- -->
+<span class="layer-label">config</span>
+
+<div class="cards">
+
+  <div class="card">
+    <div class="card-title">ExperimentConfig <span class="badge">dataclass</span></div>
+    <dl>
+      <dt>name</dt>         <dd>str &mdash; human-readable experiment name</dd>
+      <dt>trace_paths</dt>  <dd>list[(str, str)] &mdash; voltage/current file pairs</dd>
+      <dt>loss_type</dt>    <dd>"mse" | "guarino" | "soft_dtw"</dd>
+      <dt>guarino_weights</dt> <dd>GuarinoWeights &mdash; feature importance</dd>
+      <dt>missing_penalty</dt> <dd>float &mdash; penalty for absent features (default 3.0)</dd>
+      <div class="sep"></div>
+      <dt>surrogate_type</dt>  <dd>"sigmoid" | "exponential" | "superspike"</dd>
+      <dt>surrogate_slope</dt> <dd>float &mdash; &beta; sharpness (default 25.0)</dd>
+      <dt>temperature</dt>     <dd>float &mdash; &tau; for soft feature extraction</dd>
+      <dt>beta</dt>            <dd>float &mdash; sigmoid sharpness in spike counting</dd>
+      <div class="sep"></div>
+      <dt>optimizer</dt>       <dd>"adam" | "sgd" | "rmsprop"</dd>
+      <dt>learning_rate</dt>   <dd>float</dd>
+      <dt>n_epochs</dt>        <dd>int</dd>
+      <dt>clip_to_bounds</dt>  <dd>bool</dd>
+      <dt>trainable_params</dt><dd>[str] &mdash; which AdEx params to optimize</dd>
+      <dt>initial_params</dt>  <dd>dict | None &mdash; override starting values</dd>
+    </dl>
+    <div class="sep"></div>
+    <ul>
+      <li><code>to_dict()</code>, <code>save()</code>, <code>load()</code>, <code>from_dict()</code></li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="card-title">ExperimentResult <span class="badge">dataclass</span></div>
+    <dl>
+      <dt>config</dt>             <dd>ExperimentConfig</dd>
+      <dt>timestamp</dt>          <dd>str</dd>
+      <div class="sep"></div>
+      <dt>loss_history</dt>       <dd>[float] &mdash; loss at each epoch</dd>
+      <dt>time_per_epoch</dt>     <dd>[float] &mdash; seconds</dd>
+      <dt>final_params</dt>       <dd>dict &mdash; {name: float}</dd>
+      <div class="sep"></div>
+      <dt>gamma</dt>              <dd>float &mdash; coincidence factor &Gamma;</dd>
+      <dt>spike_count_target</dt> <dd>int</dd>
+      <dt>spike_count_model</dt>  <dd>int</dd>
+      <dt>first_spike_error_ms</dt><dd>float</dd>
+      <div class="sep"></div>
+      <dt>plot_path</dt>          <dd>Path | None</dd>
+      <dt>result_dir</dt>         <dd>Path | None</dd>
+    </dl>
+    <div class="sep"></div>
+    <ul>
+      <li><code>final_loss</code>, <code>total_time</code>, <code>mean_time_per_epoch</code> (properties)</li>
+      <li><code>summary()</code>, <code>save()</code>, <code>load()</code></li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="card-title">GuarinoWeights <span class="badge">dataclass</span></div>
+    <dl>
+      <dt>weight_t_first</dt>        <dd>float (1.0)</dd>
+      <dt>weight_t_second</dt>       <dd>float (1.0)</dd>
+      <dt>weight_t_third</dt>        <dd>float (1.0)</dd>
+      <dt>weight_t_last</dt>         <dd>float (1.0)</dd>
+      <dt>weight_inv_first_isi</dt>  <dd>float (1.0)</dd>
+      <dt>weight_inv_last_isi</dt>   <dd>float (1.0)</dd>
+      <dt>weight_firing_freq</dt>    <dd>float (1.0)</dd>
+      <dt>weight_v_stim_end</dt>     <dd>float (1.0)</dd>
+    </dl>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Presets <span class="badge func">module</span></div>
+    <p style="font-size:0.85rem; margin-bottom:0.5rem;">9 named <code>ExperimentConfig</code> instances:</p>
+    <ul>
+      <li><strong>quick_test</strong> &mdash; 50 epochs, debugging</li>
+      <li><strong>standard</strong> &mdash; 500 epochs, balanced</li>
+      <li><strong>thorough</strong> &mdash; 2000 epochs, lr=0.05</li>
+      <li><strong>mse_standard</strong> &mdash; MSE loss, 500 epochs</li>
+      <li><strong>soft_dtw</strong> &mdash; Soft-DTW + MAE loss, 500 epochs</li>
+      <li><strong>superspike</strong> &mdash; superspike surrogate, slope=10</li>
+      <li><strong>exponential</strong> &mdash; exponential surrogate, slope=5</li>
+      <li><strong>high_freq_weight</strong> &mdash; freq weight=5.0</li>
+      <li><strong>high_timing_weight</strong> &mdash; timing weights=3.0</li>
+    </ul>
+  </div>
+
+</div>
+
+<!-- ---- Core layer ---- -->
+<span class="layer-label core">core</span>
+
+<div class="cards triple">
+
+  <div class="card">
+    <div class="card-title">TraceData <span class="badge">dataclass</span></div>
+    <dl>
+      <dt>time</dt>           <dd>ndarray &mdash; ms</dd>
+      <dt>voltage</dt>        <dd>ndarray &mdash; mV</dd>
+      <dt>current</dt>        <dd>ndarray &mdash; pA</dd>
+      <dt>dt_ms</dt>          <dd>float</dd>
+      <dt>spike_times</dt>    <dd>ndarray &mdash; ms</dd>
+      <dt>stim_start_idx</dt> <dd>int</dd>
+      <dt>stim_end_idx</dt>   <dd>int</dd>
+      <dt>stim_current_pA</dt><dd>float</dd>
+    </dl>
+    <div class="sep"></div>
+    <ul>
+      <li><code>n_samples</code>, <code>duration_ms</code>, <code>stim_duration_ms</code>, <code>n_spikes</code></li>
+      <li><code>get_stim_window()</code> &rarr; (time, voltage, current)</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="card-title">SimulationResult <span class="badge">dataclass</span></div>
+    <dl>
+      <dt>time</dt>        <dd>ndarray &mdash; ms</dd>
+      <dt>voltage</dt>     <dd>ndarray &mdash; mV</dd>
+      <dt>w</dt>           <dd>ndarray &mdash; adaptation current (pA)</dd>
+      <dt>spikes</dt>      <dd>ndarray &mdash; binary/soft indicator</dd>
+      <dt>spike_times</dt> <dd>ndarray &mdash; ms</dd>
+    </dl>
+    <div class="sep"></div>
+    <ul>
+      <li><code>n_spikes</code>, <code>firing_rate_hz</code></li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="card-title">AdExParams <span class="badge td">TypedDict</span></div>
+    <dl>
+      <dt>C_m</dt>     <dd>float &mdash; capacitance (pF)</dd>
+      <dt>g_L</dt>     <dd>float &mdash; leak conductance (nS)</dd>
+      <dt>E_L</dt>     <dd>float &mdash; resting potential (mV)</dd>
+      <dt>v_T</dt>     <dd>float &mdash; spike threshold (mV)</dd>
+      <dt>delta_T</dt> <dd>float &mdash; slope factor (mV)</dd>
+      <dt>v_reset</dt> <dd>float &mdash; reset potential (mV)</dd>
+      <dt>tau_w</dt>   <dd>float &mdash; adaptation time const (ms)</dd>
+      <dt>a</dt>       <dd>float &mdash; subthreshold adaptation (nS)</dd>
+      <dt>b</dt>       <dd>float &mdash; spike-triggered adapt (pA)</dd>
+    </dl>
+  </div>
+
+</div>
+
+<div class="cards">
+  <div class="card">
+    <div class="card-title">ParamBounds <span class="badge">dataclass</span></div>
+    <dl>
+      <dt>min</dt> <dd>float</dd>
+      <dt>max</dt> <dd>float</dd>
+    </dl>
+    <div class="sep"></div>
+    <ul>
+      <li><code>clip(value)</code>, <code>__contains__(value)</code></li>
+    </ul>
+    <p style="font-size:0.82rem; margin-top:0.4rem; color:var(--muted);">
+      <code>PARAM_BOUNDS</code>: dict mapping each AdEx param name to its ParamBounds
+    </p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Simulation Functions <span class="badge func">functions</span></div>
+    <ul>
+      <li><code>create_adex_cell(params, ...)</code> &rarr; <code>jx.Cell</code><br>
+        Single source of truth for cell creation (AdEx or AdExSurrogate)</li>
+      <li><code>simulate_jaxley(params, stim, ...)</code> &rarr; SimulationResult<br>
+        Step-current simulation via Jaxley</li>
+      <li><code>simulate_brian2(params, stim, ...)</code> &rarr; SimulationResult<br>
+        Equivalent Brian2 simulation (verification)</li>
+      <li><code>simulate_with_current_trace(params, current, ...)</code> &rarr; SimulationResult<br>
+        Arbitrary current waveform (experimental data)</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ---- Loss layer ---- -->
+<span class="layer-label loss">loss</span>
+
+<div class="cards">
+
+  <div class="card">
+    <div class="card-title">GuarinoFeatures <span class="badge">dataclass</span></div>
+    <dl>
+      <dt>t_first_spike</dt>    <dd>Array &mdash; soft time to 1st spike</dd>
+      <dt>t_second_spike</dt>   <dd>Array &mdash; soft time to 2nd spike</dd>
+      <dt>t_third_spike</dt>    <dd>Array &mdash; soft time to 3rd spike</dd>
+      <dt>t_last_spike</dt>     <dd>Array &mdash; soft time to last spike</dd>
+      <dt>inv_first_isi</dt>    <dd>Array &mdash; 1 / first ISI</dd>
+      <dt>inv_last_isi</dt>     <dd>Array &mdash; 1 / last ISI</dd>
+      <dt>firing_frequency</dt> <dd>Array &mdash; Hz</dd>
+      <dt>v_stim_end</dt>       <dd>Array &mdash; voltage at stim end (mV)</dd>
+      <div class="sep"></div>
+      <dt>has_first_spike</dt>  <dd>Array &mdash; soft validity flag (&sigma;-gated)</dd>
+      <dt>has_second_spike</dt> <dd>Array</dd>
+      <dt>has_third_spike</dt>  <dd>Array</dd>
+      <dt>n_spikes</dt>         <dd>Array &mdash; soft spike count</dd>
+    </dl>
+  </div>
+
+  <div class="card">
+    <div class="card-title">GuarinoFeatureExtractor <span class="badge cls">class</span></div>
+    <dl>
+      <dt>dt_ms</dt>             <dd>float</dd>
+      <dt>stim_duration_ms</dt>  <dd>float</dd>
+      <dt>stim_end_index</dt>    <dd>int</dd>
+      <dt>temperature</dt>       <dd>float &mdash; &tau; (lower = sharper)</dd>
+      <dt>beta</dt>              <dd>float &mdash; sigmoid sharpness</dd>
+    </dl>
+    <div class="sep"></div>
+    <ul>
+      <li><code>extract(voltage, spikes)</code> &rarr; GuarinoFeatures</li>
+    </ul>
+    <p style="font-size:0.82rem; margin-top:0.5rem; color:var(--muted);">
+      Calls soft primitives: <code>soft_time_to_nth_spike()</code>,
+      <code>soft_time_to_last_spike()</code>,
+      <code>soft_inverse_first_isi()</code>,
+      <code>soft_inverse_last_isi()</code>,
+      <code>soft_firing_frequency()</code>,
+      <code>soft_spike_count()</code>
+    </p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">GuarinoLossConfig <span class="badge">dataclass</span></div>
+    <dl>
+      <dt>weight_t_first..last</dt>    <dd>float (1.0 each)</dd>
+      <dt>weight_inv_first/last_isi</dt><dd>float (1.0 each)</dd>
+      <dt>weight_firing_freq</dt>      <dd>float (1.0)</dd>
+      <dt>weight_v_stim_end</dt>       <dd>float (1.0)</dd>
+      <dt>missing_feature_penalty</dt> <dd>float (3.0)</dd>
+      <dt>epsilon</dt>                 <dd>float (1e-6)</dd>
+    </dl>
+  </div>
+
+  <div class="card">
+    <div class="card-title">MSELossConfig <span class="badge">dataclass</span></div>
+    <dl>
+      <dt>normalize</dt> <dd>bool &mdash; divide by variance</dd>
+      <dt>epsilon</dt>   <dd>float (1e-6)</dd>
+    </dl>
+    <div class="sep"></div>
+    <p style="font-size:0.82rem; color:var(--muted);">
+      <code>mse_loss(sim_v, exp_v)</code> &mdash; direct voltage MSE<br>
+      <code>make_mse_loss_fn(cell, data_stimuli, ...)</code> &mdash; closure for training
+    </p>
+  </div>
+
+  <div class="card full">
+    <div class="card-title">SoftDTWLossConfig <span class="badge">dataclass</span></div>
+    <dl>
+      <dt>gamma_sdtw</dt>  <dd>float (1.0) &mdash; softmin smoothing (lower &asymp; hard DTW)</dd>
+      <dt>weight_dtw</dt>  <dd>float (1.0) &mdash; weight for DTW component</dd>
+      <dt>weight_mae</dt>  <dd>float (0.5) &mdash; weight for MAE component</dd>
+      <dt>normalize</dt>   <dd>bool (True) &mdash; length-normalize DTW distance</dd>
+      <dt>max_length</dt>  <dd>int | None (2000) &mdash; downsample long traces for O(T&sup2;) memory</dd>
+    </dl>
+    <div class="sep"></div>
+    <p style="font-size:0.82rem; color:var(--muted);">
+      <code>soft_dtw(sim_v, exp_v, gamma)</code> &mdash; differentiable DTW via <code>jax.lax.scan</code> softmin recurrence<br>
+      <code>mae_loss(sim_v, exp_v)</code> &mdash; mean absolute error<br>
+      <code>soft_dtw_mae_loss(sim_v, exp_v, config)</code> &mdash; weighted combination<br>
+      <code>make_soft_dtw_loss_fn(cell, data_stimuli, ...)</code> &mdash; closure for training
+    </p>
+  </div>
+
+</div>
+
+<!-- ---- Training & Evaluation layer ---- -->
+<span class="layer-label train">training &amp; evaluation</span>
+
+<div class="cards">
+
+  <div class="card">
+    <div class="card-title">TrainingConfig <span class="badge">dataclass</span></div>
+    <dl>
+      <dt>optimizer</dt>       <dd>"adam" | "sgd" | "rmsprop"</dd>
+      <dt>learning_rate</dt>   <dd>float (0.1)</dd>
+      <dt>n_epochs</dt>        <dd>int (500)</dd>
+      <dt>surrogate_type</dt>  <dd>str</dd>
+      <dt>surrogate_slope</dt> <dd>float</dd>
+      <dt>clip_to_bounds</dt>  <dd>bool</dd>
+      <dt>trainable_params</dt><dd>[str] | None</dd>
+    </dl>
+  </div>
+
+  <div class="card">
+    <div class="card-title">TrainingResult <span class="badge">dataclass</span></div>
+    <dl>
+      <dt>trainable_params</dt> <dd>[dict] &mdash; Jaxley format: [{"AdEx_g_L": Array}]</dd>
+      <dt>loss_history</dt>     <dd>[float]</dd>
+      <dt>time_per_epoch</dt>   <dd>[float]</dd>
+      <dt>config</dt>           <dd>TrainingConfig</dd>
+      <dt>initial_params</dt>   <dd>dict</dd>
+    </dl>
+    <div class="sep"></div>
+    <ul>
+      <li><code>get_params_dict()</code> &rarr; {"g_L": float, ...} (strips <code>AdEx_</code> prefix)</li>
+      <li><code>final_loss</code>, <code>total_time</code>, <code>mean_time_per_epoch</code></li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="card-title">CoincidenceResult <span class="badge">dataclass</span></div>
+    <dl>
+      <dt>gamma</dt>                  <dd>float &mdash; &Gamma; &isin; [-1, 1]</dd>
+      <dt>n_coincidences</dt>         <dd>int</dd>
+      <dt>n_data / n_model</dt>       <dd>int &mdash; spike counts</dd>
+      <dt>expected_coincidences</dt>   <dd>float &mdash; chance level</dd>
+      <dt>firing_rate_model</dt>       <dd>float &mdash; Hz</dd>
+      <dt>delta_ms</dt>               <dd>float &mdash; coincidence window</dd>
+    </dl>
+  </div>
+
+  <div class="card">
+    <div class="card-title">EvaluationMetrics <span class="badge">dataclass</span></div>
+    <dl>
+      <dt>gamma</dt>                       <dd>float</dd>
+      <dt>coincidence_result</dt>          <dd>CoincidenceResult</dd>
+      <dt>spike_count_target/model</dt>    <dd>int</dd>
+      <dt>first_spike_error_ms</dt>        <dd>float</dd>
+      <dt>mean_spike_timing_error_ms</dt>  <dd>float</dd>
+    </dl>
+    <div class="sep"></div>
+    <ul>
+      <li><code>spike_count_diff</code>, <code>spike_count_accurate</code> (&plusmn;1)</li>
+    </ul>
+  </div>
+
+</div>
+
+<!-- ---- Runner layer ---- -->
+<span class="layer-label runner">runner (orchestration)</span>
+
+<div class="cards">
+
+  <div class="card full">
+    <div class="card-title">ExperimentRunner <span class="badge cls">class</span></div>
+    <dl>
+      <dt>config</dt>             <dd>ExperimentConfig</dd>
+      <dt>result_dir</dt>         <dd>Path</dd>
+      <dt>progress_callback</dt>  <dd>Callable | None</dd>
+      <dt>evaluator</dt>          <dd>Evaluator</dd>
+      <dt>_traces</dt>            <dd>[TraceData] (internal)</dd>
+      <dt>_training_result</dt>   <dd>TrainingResult | None (internal)</dd>
+    </dl>
+    <div class="sep"></div>
+    <ul>
+      <li><code>run()</code> &rarr; ExperimentResult &mdash; full lifecycle: load &rarr; train &rarr; evaluate &rarr; plot &rarr; save</li>
+      <li><code>load_data()</code>, <code>request_stop()</code></li>
+      <li><code>_run_training()</code>, <code>_create_loss_fn()</code>, <code>_run_evaluation()</code>, <code>_generate_plots()</code>, <code>_save_results()</code></li>
+    </ul>
+  </div>
+
+  <div class="card full">
+    <div class="card-title">Evaluator <span class="badge cls">class</span></div>
+    <dl>
+      <dt>delta_ms</dt>           <dd>float (2.0) &mdash; coincidence window</dd>
+      <dt>spike_threshold_mv</dt> <dd>float (0.0) &mdash; spike detection threshold</dd>
+    </dl>
+    <div class="sep"></div>
+    <ul>
+      <li><code>compute_metrics(target_v, model_v, ...)</code> &rarr; EvaluationMetrics</li>
+      <li><code>plot_comparison()</code> &mdash; target vs model voltage overlay + spike raster</li>
+      <li><code>plot_loss_curve()</code> &mdash; log-scale training loss</li>
+      <li><code>plot_metrics_summary()</code> &mdash; &Gamma; bar, spike count, timing errors</li>
+    </ul>
+  </div>
+
+</div>
+
+
+<!-- ============================================================ -->
+<h2>4. Execution Flow</h2>
+
+<div class="flow-diagram">
+main.py  ──parse args──┬── --list-presets ──► describe_presets() ──► stdout
+                       │
+                       ├── --quick ──► run_quick_test()
+                       │                 ├ get_preset("quick_test")
+                       │                 ├ scan 4_data/ for first trace
+                       │                 └─────────────────────────────┐
+                       │                                               │
+                       └── --trace V I ──► run_cli_mode() ─────────────┤
+                                           ├ get_preset(name)          │
+                                           └───────────────────────────┤
+                                                                       ▼
+                                                         <strong>ExperimentRunner.run()</strong>
+                                                                       │
+                 ┌──────────────────────────────┬─────────────────────┬┴──────────────┐
+                 ▼                              ▼                     ▼               ▼
+          <strong>1. load_data()</strong>            <strong>2. _run_training()</strong>   <strong>3. _run_evaluation()</strong>  <strong>4. _save_results()</strong>
+                 │                              │                      │               │
+          load_trace(*.dat)             setup_trainable_cell()   simulate_with_    config.json
+                 │                       ├ jx.Cell                current_trace()   result.json
+                 ▼                       ├ AdExSurrogate          (no surrogate)
+          <strong>TraceData</strong>                  ├ make_trainable()             │
+          (voltage, current,            ├ data_stimulate()        Evaluator
+           spikes, stim window)         │                        .compute_metrics()
+                                        ▼                         ├ coincidence_factor
+                                 _create_loss_fn()                ├ spike counts
+                                  ├ guarino ──► make_guarino_     └ timing errors
+                                  │             loss_fn()               │
+                                  ├ mse ──────► make_mse_               ▼
+                                  │             loss_fn()        <strong>EvaluationMetrics</strong>
+                                  └ soft_dtw ─► make_soft_dtw_
+                                                loss_fn()
+                                        │                              │
+                                        ▼                              │
+                                 <strong>train()</strong>                               │
+                                  for epoch:                     _generate_plots()
+                                    loss, grad = vjp(loss_fn)     ├ comparison.png
+                                    optax.update()                ├ loss_curve.png
+                                    clip_params()                 └ metrics.png
+                                        │
+                                        ▼
+                                 <strong>TrainingResult</strong> ──────────────────────► <strong>ExperimentResult</strong>
+                                                                              │
+                                                                        result.summary()
+                                                                         ──► stdout
+</div>
+
+
+<!-- ============================================================ -->
+<h2>5. Guarino Loss: Differentiable Feature Pipeline</h2>
+
+<div class="flow-diagram">
+                        jx.integrate(cell, params=params)
+                                     │
+                           ┌─────────┴─────────┐
+                           ▼                   ▼
+                     voltage[T]          spikes[T]           (soft, from AdExSurrogate)
+                           │                   │
+                           │   <strong>GuarinoFeatureExtractor.extract()</strong>
+                           │   ┌───────────────┴──────────────────────────────┐
+                           │   │                                              │
+                           │   ▼                                              ▼
+                           │ soft_spike_count(spikes)               soft_time_to_nth_spike()
+                           │   │                                    soft_time_to_last_spike()
+                           │   ▼                                    soft_inverse_first_isi()
+                           │ n_spikes ──► has_first/second/         soft_inverse_last_isi()
+                           │              third_spike                soft_firing_frequency()
+                           │              (sigmoid gating)                  │
+                           │                                                │
+                           ▼                                                ▼
+                     v_stim_end                                  t_first, t_second, t_third
+                     (voltage[idx])                              t_last, inv_isi_first/last
+                           │                                     firing_freq
+                           └──────────────┬─────────────────────────────────┘
+                                          ▼
+                               <strong>GuarinoFeatures</strong> (simulated, differentiable)
+                                          │
+                           ┌──────────────┴──────────────┐
+                           ▼                             ▼
+                   GuarinoFeatures (sim)        GuarinoFeatures (exp)
+                                                 (hard spike detection,
+                                                  non-differentiable)
+                                          │
+                                          ▼
+                                  <strong>guarino_loss()</strong>
+                                   for each feature:
+                                     error = |sim - exp| / |exp|
+                                     loss += weight &times; validity &times; error + penalty
+                                          │
+                                          ▼
+                                    scalar loss ──► jax.value_and_grad()
+                                                         │
+                                                         ▼
+                                                 parameter updates
+</div>
+
+
+<!-- ============================================================ -->
+<h2>6. Key Design Decisions</h2>
+
+<div class="key-points">
+  <ul>
+    <li><strong>ExperimentConfig</strong> is the single source of truth for all hyperparameters &mdash; presets are named deep-copies of it.</li>
+    <li><strong>TraceData vs SimulationResult</strong>: TraceData holds raw experimental recordings (with stimulation window metadata); SimulationResult holds Jaxley/Brian2 output (voltage + adaptation current <em>w</em> + spike trace).</li>
+    <li><strong>Loss functions are closures</strong>: <code>make_guarino_loss_fn()</code>, <code>make_mse_loss_fn()</code>, and <code>make_soft_dtw_loss_fn()</code> capture the cell, data stimuli, and target data, returning a <code>params &rarr; scalar</code> function compatible with <code>jax.value_and_grad()</code>.</li>
+    <li><strong>ExperimentRunner</strong> is the orchestrator that wires the full lifecycle: load data &rarr; train &rarr; evaluate &rarr; plot &rarr; save.</li>
+    <li><strong>Evaluator</strong> owns both metric computation (coincidence factor &Gamma;, timing errors) and all matplotlib visualization.</li>
+    <li><strong>TrainingResult</strong> stores params in Jaxley&rsquo;s internal format (<code>[{"AdEx_g_L": Array}]</code>); <code>get_params_dict()</code> converts to <code>{"g_L": float}</code>.</li>
+    <li><strong>Soft feature extraction</strong> uses temperature-scaled power sharpening and sigmoid-gated cumulative sum masks to make discrete spike operations differentiable.</li>
+    <li><strong>Parameter clipping</strong> is applied after each gradient step using biophysically realistic bounds from <code>PARAM_BOUNDS</code>.</li>
+  </ul>
+</div>
+
+</body>
+</html>
