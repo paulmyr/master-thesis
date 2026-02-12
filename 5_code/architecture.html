@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Loss Function Testing Framework &mdash; Architecture Overview</title>
+<title>AdEx Optimization Library &mdash; Architecture Overview</title>
 <style>
   :root {
     --bg: #ffffff;
@@ -163,7 +163,6 @@
   .layer-label.core    { background: var(--green); }
   .layer-label.loss    { background: var(--orange); }
   .layer-label.train   { background: var(--purple); }
-  .layer-label.runner  { background: #0d9488; }
 
   /* ---- print ---- */
   @media print {
@@ -200,8 +199,8 @@
 </head>
 <body>
 
-<h1>Loss Function Testing Framework</h1>
-<p>Architecture overview for the AdEx gradient-based parameter optimization codebase &mdash; <code>5_code/</code></p>
+<h1>ADoptEX</h1>
+<p>Architecture overview for the ADoptEX package &mdash; differentiable AdEx neuron parameter optimization</p>
 
 <!-- ============================================================ -->
 <h2>1. Module Responsibilities</h2>
@@ -212,14 +211,9 @@
   </thead>
   <tbody>
     <tr>
-      <td><strong>Entry point</strong></td>
-      <td><code>main.py</code></td>
-      <td>CLI argument parsing (argparse). Dispatches to <code>ExperimentRunner</code> via <code>--quick</code>, <code>--trace</code>, or <code>--list-presets</code>.</td>
-    </tr>
-    <tr>
       <td><strong>config</strong></td>
-      <td><code>experiment.py</code><br><code>presets.py</code></td>
-      <td>Canonical experiment schema (<code>ExperimentConfig</code>, <code>ExperimentResult</code>) and 9 named preset configurations.</td>
+      <td><code>experiment.py</code></td>
+      <td>Experiment schema (<code>ExperimentConfig</code>, <code>GuarinoWeights</code>).</td>
     </tr>
     <tr>
       <td><strong>core</strong></td>
@@ -242,14 +236,9 @@
       <td>Coincidence factor &Gamma; (Jolivet et al. 2008), intrinsic reliability, global performance metric.</td>
     </tr>
     <tr>
-      <td><strong>runner</strong></td>
-      <td><code>experiment.py</code><br><code>evaluator.py</code></td>
-      <td>Orchestration (<code>ExperimentRunner</code>): wires data&rarr;training&rarr;evaluation&rarr;plotting&rarr;saving. <code>Evaluator</code> computes metrics &amp; generates matplotlib figures.</td>
-    </tr>
-    <tr>
       <td><strong>plotting</strong></td>
-      <td><code>plots.py</code></td>
-      <td>Standalone plotting helpers: voltage traces, spike rasters, Brian2/Jaxley comparison grids, training curves, fit results, &Gamma; bar charts.</td>
+      <td><code>plotting.py</code></td>
+      <td>Visualization utilities: trace plots, fit comparisons, training diagnostics, parameter analysis, spike timing evaluation.</td>
     </tr>
   </tbody>
 </table>
@@ -259,36 +248,30 @@
 <h2>2. Directory Structure</h2>
 
 <div class="tree"><span class="dir">5_code/</span>
-<span class="hl"><span class="file">main.py</span></span>                        <span class="comment">Entry point (argparse CLI)</span>
-<span class="file">__init__.py</span>
-<span class="dir">config/</span>
+<span class="file">pyproject.toml</span>                 <span class="comment">package metadata + pytest config</span>
+<span class="dir">ADoptEX/</span>                       <span class="comment">installable Python package</span>
     <span class="file">__init__.py</span>
-    <span class="file">experiment.py</span>              <span class="comment">ExperimentConfig, ExperimentResult, GuarinoWeights</span>
-    <span class="file">presets.py</span>                 <span class="comment">9 named presets + get_preset(), describe_presets()</span>
-<span class="dir">core/</span>
-    <span class="file">__init__.py</span>
-    <span class="file">data.py</span>                    <span class="comment">TraceData, load_trace(), detect_spikes()</span>
-    <span class="file">parameters.py</span>              <span class="comment">DEFAULT_PARAMS, PARAM_BOUNDS, AdExParams, ParamBounds</span>
-    <span class="file">simulation.py</span>              <span class="comment">SimulationResult, create_adex_cell(), simulate_*()</span>
-<span class="dir">loss/</span>
-    <span class="file">__init__.py</span>
-    <span class="file">guarino.py</span>                 <span class="comment">Feature-based loss (soft spike features), GuarinoFeatures</span>
-    <span class="file">mse.py</span>                     <span class="comment">MSE voltage loss, MSELossConfig</span>
-    <span class="file">dtw.py</span>                     <span class="comment">Soft-DTW + MAE loss, SoftDTWLossConfig</span>
-<span class="dir">training/</span>
-    <span class="file">__init__.py</span>
-    <span class="file">trainer.py</span>                 <span class="comment">TrainingConfig, TrainingResult, setup_trainable_cell(), train()</span>
-<span class="dir">evaluation/</span>
-    <span class="file">__init__.py</span>
-    <span class="file">coincidence.py</span>             <span class="comment">CoincidenceResult, coincidence_factor() (&Gamma;)</span>
-<span class="dir">runner/</span>
-    <span class="file">__init__.py</span>
-    <span class="file">experiment.py</span>              <span class="comment">ExperimentRunner (orchestrator), TrainingProgress</span>
-    <span class="file">evaluator.py</span>               <span class="comment">Evaluator, EvaluationMetrics, plot methods</span>
-<span class="dir">plotting/</span>
-    <span class="file">__init__.py</span>
-    <span class="file">plots.py</span>                   <span class="comment">Standalone matplotlib helpers</span>
-<span class="dir">results/</span>                       <span class="comment">Timestamped output directories</span>
+    <span class="dir">config/</span>
+        <span class="file">__init__.py</span>
+        <span class="file">experiment.py</span>          <span class="comment">ExperimentConfig, GuarinoWeights</span>
+    <span class="dir">core/</span>
+        <span class="file">__init__.py</span>
+        <span class="file">data.py</span>                <span class="comment">TraceData, load_trace(), detect_spikes()</span>
+        <span class="file">parameters.py</span>          <span class="comment">DEFAULT_PARAMS, PARAM_BOUNDS, AdExParams, ParamBounds</span>
+        <span class="file">simulation.py</span>          <span class="comment">SimulationResult, create_adex_cell(), simulate_*()</span>
+    <span class="dir">loss/</span>
+        <span class="file">__init__.py</span>
+        <span class="file">guarino.py</span>             <span class="comment">Feature-based loss (soft spike features), GuarinoFeatures</span>
+        <span class="file">mse.py</span>                 <span class="comment">MSE voltage loss, MSELossConfig</span>
+        <span class="file">dtw.py</span>                 <span class="comment">Soft-DTW + MAE loss, SoftDTWLossConfig</span>
+    <span class="dir">training/</span>
+        <span class="file">__init__.py</span>
+        <span class="file">trainer.py</span>             <span class="comment">TrainingConfig, TrainingResult, setup_trainable_cell(), train()</span>
+    <span class="dir">evaluation/</span>
+        <span class="file">__init__.py</span>
+        <span class="file">coincidence.py</span>         <span class="comment">CoincidenceResult, coincidence_factor() (&Gamma;)</span>
+    <span class="file">plotting.py</span>                <span class="comment">Trace plots, training diagnostics, spike timing</span>
+    <span class="dir">tests/</span>                     <span class="comment">pytest suite (144 tests)</span>
 <span class="dir">notebooks/</span>                     <span class="comment">Jupyter notebooks</span>
 </div>
 
@@ -329,31 +312,6 @@
   </div>
 
   <div class="card">
-    <div class="card-title">ExperimentResult <span class="badge">dataclass</span></div>
-    <dl>
-      <dt>config</dt>             <dd>ExperimentConfig</dd>
-      <dt>timestamp</dt>          <dd>str</dd>
-      <div class="sep"></div>
-      <dt>loss_history</dt>       <dd>[float] &mdash; loss at each epoch</dd>
-      <dt>time_per_epoch</dt>     <dd>[float] &mdash; seconds</dd>
-      <dt>final_params</dt>       <dd>dict &mdash; {name: float}</dd>
-      <div class="sep"></div>
-      <dt>gamma</dt>              <dd>float &mdash; coincidence factor &Gamma;</dd>
-      <dt>spike_count_target</dt> <dd>int</dd>
-      <dt>spike_count_model</dt>  <dd>int</dd>
-      <dt>first_spike_error_ms</dt><dd>float</dd>
-      <div class="sep"></div>
-      <dt>plot_path</dt>          <dd>Path | None</dd>
-      <dt>result_dir</dt>         <dd>Path | None</dd>
-    </dl>
-    <div class="sep"></div>
-    <ul>
-      <li><code>final_loss</code>, <code>total_time</code>, <code>mean_time_per_epoch</code> (properties)</li>
-      <li><code>summary()</code>, <code>save()</code>, <code>load()</code></li>
-    </ul>
-  </div>
-
-  <div class="card">
     <div class="card-title">GuarinoWeights <span class="badge">dataclass</span></div>
     <dl>
       <dt>weight_t_first</dt>        <dd>float (1.0)</dd>
@@ -365,21 +323,9 @@
       <dt>weight_firing_freq</dt>    <dd>float (1.0)</dd>
       <dt>weight_v_stim_end</dt>     <dd>float (1.0)</dd>
     </dl>
-  </div>
-
-  <div class="card">
-    <div class="card-title">Presets <span class="badge func">module</span></div>
-    <p style="font-size:0.85rem; margin-bottom:0.5rem;">9 named <code>ExperimentConfig</code> instances:</p>
+    <div class="sep"></div>
     <ul>
-      <li><strong>quick_test</strong> &mdash; 50 epochs, debugging</li>
-      <li><strong>standard</strong> &mdash; 500 epochs, balanced</li>
-      <li><strong>thorough</strong> &mdash; 2000 epochs, lr=0.05</li>
-      <li><strong>mse_standard</strong> &mdash; MSE loss, 500 epochs</li>
-      <li><strong>soft_dtw</strong> &mdash; Soft-DTW + MAE loss, 500 epochs</li>
-      <li><strong>superspike</strong> &mdash; superspike surrogate, slope=10</li>
-      <li><strong>exponential</strong> &mdash; exponential surrogate, slope=5</li>
-      <li><strong>high_freq_weight</strong> &mdash; freq weight=5.0</li>
-      <li><strong>high_timing_weight</strong> &mdash; timing weights=3.0</li>
+      <li><code>to_dict()</code> &rarr; dict for loss config</li>
     </ul>
   </div>
 
@@ -590,6 +536,7 @@
       <dt>time_per_epoch</dt>   <dd>[float]</dd>
       <dt>config</dt>           <dd>TrainingConfig</dd>
       <dt>initial_params</dt>   <dd>dict</dd>
+      <dt>grad_norms</dt>       <dd>[float]</dd>
     </dl>
     <div class="sep"></div>
     <ul>
@@ -611,57 +558,26 @@
   </div>
 
   <div class="card">
-    <div class="card-title">EvaluationMetrics <span class="badge">dataclass</span></div>
-    <dl>
-      <dt>gamma</dt>                       <dd>float</dd>
-      <dt>coincidence_result</dt>          <dd>CoincidenceResult</dd>
-      <dt>spike_count_target/model</dt>    <dd>int</dd>
-      <dt>first_spike_error_ms</dt>        <dd>float</dd>
-      <dt>mean_spike_timing_error_ms</dt>  <dd>float</dd>
-    </dl>
-    <div class="sep"></div>
+    <div class="card-title">Training Functions <span class="badge func">functions</span></div>
     <ul>
-      <li><code>spike_count_diff</code>, <code>spike_count_accurate</code> (&plusmn;1)</li>
-    </ul>
-  </div>
-
-</div>
-
-<!-- ---- Runner layer ---- -->
-<span class="layer-label runner">runner (orchestration)</span>
-
-<div class="cards">
-
-  <div class="card full">
-    <div class="card-title">ExperimentRunner <span class="badge cls">class</span></div>
-    <dl>
-      <dt>config</dt>             <dd>ExperimentConfig</dd>
-      <dt>result_dir</dt>         <dd>Path</dd>
-      <dt>progress_callback</dt>  <dd>Callable | None</dd>
-      <dt>evaluator</dt>          <dd>Evaluator</dd>
-      <dt>_traces</dt>            <dd>[TraceData] (internal)</dd>
-      <dt>_training_result</dt>   <dd>TrainingResult | None (internal)</dd>
-    </dl>
-    <div class="sep"></div>
-    <ul>
-      <li><code>run()</code> &rarr; ExperimentResult &mdash; full lifecycle: load &rarr; train &rarr; evaluate &rarr; plot &rarr; save</li>
-      <li><code>load_data()</code>, <code>request_stop()</code></li>
-      <li><code>_run_training()</code>, <code>_create_loss_fn()</code>, <code>_run_evaluation()</code>, <code>_generate_plots()</code>, <code>_save_results()</code></li>
+      <li><code>setup_trainable_cell(params, current, dt)</code> &rarr; (cell, data_stimuli, t_max, params)<br>
+        Creates cell with <code>make_trainable()</code> and <code>data_stimulate()</code></li>
+      <li><code>train(loss_fn, params, config)</code> &rarr; TrainingResult<br>
+        Gradient descent loop with early stopping, clipping, logging</li>
     </ul>
   </div>
 
   <div class="card full">
-    <div class="card-title">Evaluator <span class="badge cls">class</span></div>
-    <dl>
-      <dt>delta_ms</dt>           <dd>float (2.0) &mdash; coincidence window</dd>
-      <dt>spike_threshold_mv</dt> <dd>float (0.0) &mdash; spike detection threshold</dd>
-    </dl>
-    <div class="sep"></div>
+    <div class="card-title">Plotting Functions <span class="badge func">functions</span></div>
     <ul>
-      <li><code>compute_metrics(target_v, model_v, ...)</code> &rarr; EvaluationMetrics</li>
-      <li><code>plot_comparison()</code> &mdash; target vs model voltage overlay + spike raster</li>
-      <li><code>plot_loss_curve()</code> &mdash; log-scale training loss</li>
-      <li><code>plot_metrics_summary()</code> &mdash; &Gamma; bar, spike count, timing errors</li>
+      <li><code>trace_plot(trace)</code>, <code>trace_stim_window_plot(trace)</code> &mdash; raw trace visualization</li>
+      <li><code>traces_overlay_plot(traces, labels)</code> &mdash; overlay multiple traces</li>
+      <li><code>fit_comparison_plot(trace, sim)</code> &mdash; experimental vs simulated</li>
+      <li><code>training_history_plot(result)</code> &mdash; loss curve + gradient norms</li>
+      <li><code>training_comparison_plot(results, labels)</code> &mdash; compare multiple training runs</li>
+      <li><code>parameter_comparison_plot(result, bounds)</code> &mdash; normalized parameter bar chart</li>
+      <li><code>fit_before_after_plot(trace, sim_init, sim_trained, cf)</code> &mdash; before/after with raster</li>
+      <li><code>spike_timing_plot(trace, sim, cf)</code> &mdash; coincidence windows + timing error stems</li>
     </ul>
   </div>
 
@@ -669,53 +585,38 @@
 
 
 <!-- ============================================================ -->
-<h2>4. Execution Flow</h2>
+<h2>4. Training Flow</h2>
 
 <div class="flow-diagram">
-main.py  ──parse args──┬── --list-presets ──► describe_presets() ──► stdout
-                       │
-                       ├── --quick ──► run_quick_test()
-                       │                 ├ get_preset("quick_test")
-                       │                 ├ scan 4_data/ for first trace
-                       │                 └─────────────────────────────┐
-                       │                                               │
-                       └── --trace V I ──► run_cli_mode() ─────────────┤
-                                           ├ get_preset(name)          │
-                                           └───────────────────────────┤
-                                                                       ▼
-                                                         <strong>ExperimentRunner.run()</strong>
-                                                                       │
-                 ┌──────────────────────────────┬─────────────────────┬┴──────────────┐
-                 ▼                              ▼                     ▼               ▼
-          <strong>1. load_data()</strong>            <strong>2. _run_training()</strong>   <strong>3. _run_evaluation()</strong>  <strong>4. _save_results()</strong>
-                 │                              │                      │               │
-          load_trace(*.dat)             setup_trainable_cell()   simulate_with_    config.json
-                 │                       ├ jx.Cell                current_trace()   result.json
-                 ▼                       ├ AdExSurrogate          (no surrogate)
-          <strong>TraceData</strong>                  ├ make_trainable()             │
-          (voltage, current,            ├ data_stimulate()        Evaluator
-           spikes, stim window)         │                        .compute_metrics()
-                                        ▼                         ├ coincidence_factor
-                                 _create_loss_fn()                ├ spike counts
-                                  ├ guarino ──► make_guarino_     └ timing errors
-                                  │             loss_fn()               │
-                                  ├ mse ──────► make_mse_               ▼
-                                  │             loss_fn()        <strong>EvaluationMetrics</strong>
-                                  └ soft_dtw ─► make_soft_dtw_
-                                                loss_fn()
-                                        │                              │
-                                        ▼                              │
-                                 <strong>train()</strong>                               │
-                                  for epoch:                     _generate_plots()
-                                    loss, grad = vjp(loss_fn)     ├ comparison.png
-                                    optax.update()                ├ loss_curve.png
-                                    clip_params()                 └ metrics.png
-                                        │
-                                        ▼
-                                 <strong>TrainingResult</strong> ──────────────────────► <strong>ExperimentResult</strong>
-                                                                              │
-                                                                        result.summary()
-                                                                         ──► stdout
+<strong>Notebook</strong>
+    │
+    ├── load_trace(voltage_file, current_file)  ──►  <strong>TraceData</strong>
+    │
+    ├── setup_trainable_cell(params, current, dt)
+    │     ├ geometry_for_capacitance()
+    │     ├ jx.Cell() + AdExSurrogate
+    │     ├ make_trainable() for each param
+    │     ├ data_stimulate(current)
+    │     └────────────────────────────────►  cell, data_stimuli, t_max, trainable_params
+    │
+    ├── make_*_loss_fn(cell, data_stimuli, ...)
+    │     ├ guarino ──► make_guarino_loss_fn()   (soft features + relative error + penalties)
+    │     ├ mse ──────► make_mse_loss_fn()       (direct voltage MSE)
+    │     └ soft_dtw ─► make_soft_dtw_loss_fn()  (differentiable DTW + MAE)
+    │                                        ──►  loss_fn: params &rarr; scalar
+    │
+    ├── <strong>train(loss_fn, trainable_params, config)</strong>
+    │     for epoch in range(n_epochs):
+    │       loss, grads = jax.value_and_grad(loss_fn)(params)
+    │       params = optax.apply_updates(params, optimizer.update(grads))
+    │       params = clip_to_bounds(params)
+    │                                        ──►  <strong>TrainingResult</strong>
+    │
+    ├── simulate_with_current_trace(final_params, current)
+    │                                        ──►  <strong>SimulationResult</strong>
+    │
+    └── coincidence_factor(data_spikes, model_spikes)
+                                             ──►  <strong>CoincidenceResult</strong>
 </div>
 
 
@@ -769,15 +670,49 @@ main.py  ──parse args──┬── --list-presets ──► describe_prese
 
 
 <!-- ============================================================ -->
-<h2>6. Key Design Decisions</h2>
+<h2>6. Installation &amp; Usage</h2>
+
+<h3>Install (editable mode)</h3>
+<div class="flow-diagram">pip install -e 5_code/</div>
+
+<h3>Notebook usage</h3>
+<div class="flow-diagram"><span style="color:var(--muted);"># Import building blocks</span>
+from ADoptEX.core.data import load_trace
+from ADoptEX.core.parameters import DEFAULT_PARAMS, PARAM_BOUNDS
+from ADoptEX.core.simulation import simulate_with_current_trace
+from ADoptEX.loss import make_guarino_loss_fn, make_mse_loss_fn, make_soft_dtw_loss_fn
+from ADoptEX.training import train, setup_trainable_cell, TrainingConfig
+from ADoptEX.evaluation import coincidence_factor
+from ADoptEX.config import ExperimentConfig
+
+<span style="color:var(--muted);"># Load experimental data</span>
+trace = load_trace("voltage_ch5.dat", "current_ch4.dat")
+
+<span style="color:var(--muted);"># Set up cell &amp; optimizer</span>
+cell, data_stimuli, t_max, params = setup_trainable_cell(
+    DEFAULT_PARAMS, trace.current, trace.dt_ms
+)
+loss_fn = make_guarino_loss_fn(cell, data_stimuli, t_max, trace, ...)
+
+<span style="color:var(--muted);"># Train</span>
+config = TrainingConfig(optimizer="adam", learning_rate=0.1, n_epochs=500)
+result = train(loss_fn, params, config)
+print(result.get_params_dict())
+
+<span style="color:var(--muted);"># Evaluate</span>
+sim = simulate_with_current_trace(result.get_params_dict(), trace.current, trace.dt_ms)
+gamma = coincidence_factor(trace.spike_times, sim.spike_times, trace.duration_ms)
+print(f"&Gamma; = {gamma.gamma:.3f}")</div>
+
+<!-- ============================================================ -->
+<h2>7. Key Design Decisions</h2>
 
 <div class="key-points">
   <ul>
-    <li><strong>ExperimentConfig</strong> is the single source of truth for all hyperparameters &mdash; presets are named deep-copies of it.</li>
+    <li><strong>Notebook-first workflow</strong>: the library exposes importable building blocks (loss functions, training loop, data loading, evaluation). Orchestration, plotting, and experiment presets belong in notebooks.</li>
+    <li><strong>ExperimentConfig</strong> is the single source of truth for all hyperparameters.</li>
     <li><strong>TraceData vs SimulationResult</strong>: TraceData holds raw experimental recordings (with stimulation window metadata); SimulationResult holds Jaxley/Brian2 output (voltage + adaptation current <em>w</em> + spike trace).</li>
     <li><strong>Loss functions are closures</strong>: <code>make_guarino_loss_fn()</code>, <code>make_mse_loss_fn()</code>, and <code>make_soft_dtw_loss_fn()</code> capture the cell, data stimuli, and target data, returning a <code>params &rarr; scalar</code> function compatible with <code>jax.value_and_grad()</code>.</li>
-    <li><strong>ExperimentRunner</strong> is the orchestrator that wires the full lifecycle: load data &rarr; train &rarr; evaluate &rarr; plot &rarr; save.</li>
-    <li><strong>Evaluator</strong> owns both metric computation (coincidence factor &Gamma;, timing errors) and all matplotlib visualization.</li>
     <li><strong>TrainingResult</strong> stores params in Jaxley&rsquo;s internal format (<code>[{"AdEx_g_L": Array}]</code>); <code>get_params_dict()</code> converts to <code>{"g_L": float}</code>.</li>
     <li><strong>Soft feature extraction</strong> uses temperature-scaled power sharpening and sigmoid-gated cumulative sum masks to make discrete spike operations differentiable.</li>
     <li><strong>Parameter clipping</strong> is applied after each gradient step using biophysically realistic bounds from <code>PARAM_BOUNDS</code>.</li>

@@ -1,5 +1,31 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ADoptEX"
+version = "0.1.0"
+description = "AdEx optimization library"
+requires-python = ">=3.12"
+dependencies = [
+    "jax",
+    "jaxlib",
+    "optax",
+    "numpy",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-clarity",
+]
+
+[tool.setuptools.packages.find]
+include = ["ADoptEX*"]
+exclude = ["ADoptEX.tests*"]
+
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["ADoptEX/tests"]
 markers = [
     "slow: Tests requiring Jaxley/Brian2 simulation",
     "jaxley: Tests requiring Jaxley framework",
@@ -7,25 +33,15 @@ markers = [
 addopts = [
     "-vv",
     "--tb=short",
-    #"--tb=long", # switch when debugging a complex failure
     "--strict-markers",
-    #"-m", "not slow", # skip Jaxley/Brian2 tests
 ]
-
 filterwarnings = [
     "ignore::DeprecationWarning:jax",
     "ignore::DeprecationWarning:jaxlib",
 ]
-
 log_cli = false
 log_cli_level = "WARNING"
 
 [tool.pytest-clarity]
 max-column-width = 120
 force-enable-color = true
-
-[project.optional-dependencies]
-test = [
-    "pytest",
-    "pytest-clarity",
-]
