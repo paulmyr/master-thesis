@@ -5,9 +5,8 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from ADoptEX.loss.dtw import (SoftDTWLossConfig, _downsample, mae_loss, soft_dtw,
-                              soft_dtw_mae_loss)
-
+from ADoptEX.loss.dtw import (SoftDTWLossConfig, _downsample, mae_loss,
+                              soft_dtw, soft_dtw_mae_loss)
 
 # =========================================================================
 # _downsample

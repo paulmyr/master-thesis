@@ -6,10 +6,12 @@ import numpy as np
 import pytest
 
 from ADoptEX.loss.guarino import (GuarinoFeatureExtractor, GuarinoFeatures,
-                          soft_firing_frequency, soft_inverse_first_isi,
-                          soft_inverse_last_isi, soft_spike_count,
-                          soft_time_to_last_spike, soft_time_to_nth_spike,
-                          soft_time_to_second_last_spike)
+                                  soft_firing_frequency,
+                                  soft_inverse_first_isi,
+                                  soft_inverse_last_isi, soft_spike_count,
+                                  soft_time_to_last_spike,
+                                  soft_time_to_nth_spike,
+                                  soft_time_to_second_last_spike)
 
 # =========================================================================
 # soft_spike_count

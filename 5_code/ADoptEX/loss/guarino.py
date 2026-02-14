@@ -465,6 +465,12 @@ class GuarinoLossConfig:
     weight_firing_freq: float = 1.0
     weight_v_stim_end: float = 1.0  # Increase for strongly adapting neurons
 
+    # Spike count squared error weight
+    # Adds (n_spikes_sim - n_spikes_exp)^2 * weight to the loss.
+    # Unlike the flat missing_feature_penalty, this scales with how many
+    # spikes are missing and has clean gradient flow through soft_spike_count.
+    weight_spike_count: float = 0.0
+
     # Penalty for missing features (from Guarino paper: +3 per missing feature)
     missing_feature_penalty: float = 3.0
 
@@ -611,6 +617,12 @@ def guarino_loss(
     )
     loss_v_end = config.weight_v_stim_end * error_v_end
     total_loss = total_loss + loss_v_end
+
+    # ----- Spike count squared error -----
+    # Scales with how many spikes are missing (unlike flat penalty)
+    if config.weight_spike_count > 0:
+        spike_count_error = (sim_features.n_spikes - exp_features.n_spikes) ** 2
+        total_loss = total_loss + config.weight_spike_count * spike_count_error
 
     return total_loss
 
@@ -811,5 +823,3 @@ def make_guarino_loss_fn(
         return loss
 
     return loss_fn
-
-

@@ -29,9 +29,20 @@ class TrainingConfig:
     """Configuration for training."""
 
     # Optimizer settings
-    optimizer: Literal["adam", "sgd", "rmsprop"] = "adam"
+    optimizer: Literal["adam", "sgd", "rmsprop", "polyak"] = "adam"
     learning_rate: float = 0.1
     n_epochs: int = 500
+
+    # Gradient clipping (roadmap item 1)
+    grad_clip_norm: float | None = None
+
+    # Polyak gradient normalization (roadmap item 3)
+    polyak_alpha: float = 1.0  # loss exponent (0 = ignore loss, 1 = scale by loss)
+    polyak_beta: float = 1.0  # gradient norm exponent (1 = full normalization)
+
+    # Learning rate schedule (roadmap item 2)
+    lr_schedule: Literal["constant", "cosine", "exponential"] | None = None
+    lr_decay_rate: float = 0.01  # final/initial LR ratio for exponential decay
 
     # Surrogate gradient settings
     surrogate_type: Literal["sigmoid", "exponential", "superspike"] = "sigmoid"
@@ -49,6 +60,39 @@ class TrainingConfig:
 
     # Return best-loss parameters instead of last-epoch parameters
     return_best: bool = False
+
+    def __post_init__(self):
+        if self.grad_clip_norm is not None and self.grad_clip_norm <= 0:
+            raise ValueError(
+                f"grad_clip_norm must be positive, got {self.grad_clip_norm}"
+            )
+        if self.lr_schedule == "exponential" and self.lr_decay_rate <= 0:
+            raise ValueError(
+                f"lr_decay_rate must be positive for exponential schedule, got {self.lr_decay_rate}"
+            )
+        if (
+            self.lr_schedule is not None
+            and self.lr_schedule != "constant"
+            and self.n_epochs <= 0
+        ):
+            raise ValueError(
+                f"n_epochs must be positive when using lr_schedule, got {self.n_epochs}"
+            )
+        if self.optimizer == "polyak":
+            if self.polyak_beta <= 0:
+                raise ValueError(
+                    f"polyak_beta must be positive, got {self.polyak_beta}"
+                )
+            if self.lr_schedule is not None and self.lr_schedule != "constant":
+                raise ValueError(
+                    "lr_schedule is incompatible with polyak optimizer "
+                    "(Polyak has implicit decay via loss scaling)"
+                )
+            if self.grad_clip_norm is not None:
+                raise ValueError(
+                    "grad_clip_norm is incompatible with polyak optimizer "
+                    "(normalization replaces clipping)"
+                )
 
 
 @dataclass
@@ -68,8 +112,14 @@ class TrainingResult:
     # Initial parameters for comparison
     initial_params: dict
 
-    # Gradient diagnostics
+    # Gradient diagnostics (pre-clipping raw norms)
     grad_norms: list[float] = field(default_factory=list)
+
+    # Post-clipping gradient norms (populated when grad_clip_norm is set)
+    clipped_grad_norms: list[float] = field(default_factory=list)
+
+    # Learning rate history (populated when a schedule is active)
+    lr_history: list[float] = field(default_factory=list)
 
     # Epoch that achieved the lowest training loss
     best_epoch: int = -1
@@ -82,7 +132,9 @@ class TrainingResult:
     @property
     def best_loss(self) -> float:
         """Best (lowest) loss seen during training."""
-        return self.loss_history[self.best_epoch] if self.best_epoch >= 0 else float("nan")
+        return (
+            self.loss_history[self.best_epoch] if self.best_epoch >= 0 else float("nan")
+        )
 
     @property
     def total_time(self) -> float:
@@ -192,15 +244,45 @@ def setup_trainable_cell(
 
 
 def _create_optimizer(config: TrainingConfig):
-    """Create optimizer based on config."""
-    if config.optimizer == "adam":
-        return optax.adam(config.learning_rate)
-    elif config.optimizer == "sgd":
-        return optax.sgd(config.learning_rate)
-    elif config.optimizer == "rmsprop":
-        return optax.rmsprop(config.learning_rate)
-    else:
+    """Create optimizer based on config.
+
+    Supports optional gradient clipping (prepended via ``optax.chain``) and
+    learning-rate schedules (passed as schedule callable to the base optimizer).
+    """
+    # 1. Determine learning rate: scalar or schedule callable
+    lr = config.learning_rate
+    if config.lr_schedule == "cosine":
+        lr = optax.cosine_decay_schedule(
+            init_value=config.learning_rate, decay_steps=config.n_epochs
+        )
+    elif config.lr_schedule == "exponential":
+        lr = optax.exponential_decay(
+            init_value=config.learning_rate,
+            transition_steps=config.n_epochs,
+            decay_rate=config.lr_decay_rate,
+        )
+    # "constant" or None -> keep scalar lr
+
+    # 2. Create base optimizer
+    if config.optimizer == "polyak":
+        # Polyak uses inject_hyperparams(sgd) so we can mutate LR per step
+        optimizer = optax.inject_hyperparams(optax.sgd)(
+            learning_rate=config.learning_rate
+        )
+        return optimizer
+
+    base_opts = {"adam": optax.adam, "sgd": optax.sgd, "rmsprop": optax.rmsprop}
+    if config.optimizer not in base_opts:
         raise ValueError(f"Unknown optimizer: {config.optimizer}")
+    optimizer = base_opts[config.optimizer](lr)
+
+    # 3. Prepend gradient clipping if configured
+    if config.grad_clip_norm is not None:
+        optimizer = optax.chain(
+            optax.clip_by_global_norm(config.grad_clip_norm), optimizer
+        )
+
+    return optimizer
 
 
 def _clip_trainable_params(params: list[dict], bounds: dict) -> list[dict]:
@@ -277,19 +359,45 @@ def train(
     optimizer = _create_optimizer(config)
     opt_state = optimizer.init(trainable_params)
 
+    # Build LR schedule function for logging (if schedule active)
+    lr_schedule_fn = None
+    if config.lr_schedule == "cosine":
+        lr_schedule_fn = optax.cosine_decay_schedule(
+            init_value=config.learning_rate, decay_steps=config.n_epochs
+        )
+    elif config.lr_schedule == "exponential":
+        lr_schedule_fn = optax.exponential_decay(
+            init_value=config.learning_rate,
+            transition_steps=config.n_epochs,
+            decay_rate=config.lr_decay_rate,
+        )
+
     # Training loop
     loss_history = []
     time_per_epoch = []
     grad_norms = []
+    clipped_grad_norms = []
+    lr_history = []
     best_loss = float("inf")
     best_trainable_params = None
     best_epoch = -1
 
     if config.verbose:
+        extras = []
+        if config.optimizer == "polyak":
+            extras.append(f"alpha={config.polyak_alpha} beta={config.polyak_beta}")
+        if config.grad_clip_norm is not None:
+            extras.append(f"clip={config.grad_clip_norm}")
+        if config.lr_schedule is not None:
+            extras.append(f"schedule={config.lr_schedule}")
         log.info(
-            "Training: optimizer=%s lr=%s epochs=%d surrogate=%s slope=%.1f",
-            config.optimizer, config.learning_rate, config.n_epochs,
-            config.surrogate_type, config.surrogate_slope,
+            "Training: optimizer=%s lr=%s epochs=%d surrogate=%s slope=%.1f%s",
+            config.optimizer,
+            config.learning_rate,
+            config.n_epochs,
+            config.surrogate_type,
+            config.surrogate_slope,
+            (" " + " ".join(extras)) if extras else "",
         )
 
     for epoch in range(config.n_epochs):
@@ -310,7 +418,17 @@ def train(
             break
 
         # Update parameters
-        updates, opt_state = optimizer.update(grads, opt_state)
+        if config.optimizer == "polyak":
+            # Polyak normalization: normalize grad direction, scale LR by loss
+            norm = _compute_grad_norm(grads)
+            normalized_grads = jax.tree.map(
+                lambda g: g / (norm**config.polyak_beta + 1e-8), grads
+            )
+            effective_lr = config.learning_rate * float(loss) ** config.polyak_alpha
+            opt_state.hyperparams["learning_rate"] = effective_lr
+            updates, opt_state = optimizer.update(normalized_grads, opt_state)
+        else:
+            updates, opt_state = optimizer.update(grads, opt_state)
         trainable_params = optax.apply_updates(trainable_params, updates)
 
         # Apply parameter bounds
@@ -324,6 +442,16 @@ def train(
         time_per_epoch.append(t1 - t0)
         grad_norms.append(float(grad_norm))
 
+        # Post-clipping gradient norm: clip_by_global_norm caps the L2 norm
+        if config.grad_clip_norm is not None:
+            clipped_grad_norms.append(min(float(grad_norm), config.grad_clip_norm))
+
+        # Track learning rate when schedule is active or polyak is used
+        if config.optimizer == "polyak":
+            lr_history.append(effective_lr)
+        elif lr_schedule_fn is not None:
+            lr_history.append(float(lr_schedule_fn(epoch)))
+
         # Track best parameters
         if loss_val < best_loss:
             best_loss = loss_val
@@ -332,24 +460,38 @@ def train(
 
         # Periodic logging
         if epoch % config.print_every == 0:
+            lr_str = f" | lr={lr_history[-1]:.2e}" if lr_history else ""
             log.info(
-                "Epoch %4d | loss=%.6f | grad_norm=%.2e | %s",
-                epoch, loss_val, float(grad_norm),
+                "Epoch %4d | loss=%.6f | grad_norm=%.2e%s | %s",
+                epoch,
+                loss_val,
+                float(grad_norm),
+                lr_str,
                 _format_params(trainable_params),
             )
 
     if config.verbose and loss_history:
+        lr_decay_str = ""
+        if lr_history:
+            lr_decay_str = f" lr={lr_history[0]:.2e}->{lr_history[-1]:.2e}"
         log.info(
             "Training complete: final_loss=%.6f best_loss=%.6f (epoch %d) "
-            "total_time=%.1fs mean_epoch=%.1fms%s",
-            loss_history[-1], loss_history[best_epoch] if best_epoch >= 0 else float("nan"),
+            "total_time=%.1fs mean_epoch=%.1fms%s%s",
+            loss_history[-1],
+            loss_history[best_epoch] if best_epoch >= 0 else float("nan"),
             best_epoch,
-            sum(time_per_epoch), np.mean(time_per_epoch) * 1000,
+            sum(time_per_epoch),
+            np.mean(time_per_epoch) * 1000,
+            lr_decay_str,
             " [returning best]" if config.return_best else "",
         )
 
     # Return best-epoch or last-epoch params based on config
-    output_params = best_trainable_params if config.return_best and best_trainable_params is not None else trainable_params
+    output_params = (
+        best_trainable_params
+        if config.return_best and best_trainable_params is not None
+        else trainable_params
+    )
 
     return TrainingResult(
         trainable_params=output_params,
@@ -358,5 +500,7 @@ def train(
         config=config,
         initial_params=initial_params,
         grad_norms=grad_norms,
+        clipped_grad_norms=clipped_grad_norms,
+        lr_history=lr_history,
         best_epoch=best_epoch,
     )

@@ -228,7 +228,7 @@
     <tr>
       <td><strong>training</strong></td>
       <td><code>trainer.py</code></td>
-      <td>Unified training loop: cell setup with <code>make_trainable()</code>, optimizer creation (Adam/SGD/RMSProp via optax), gradient descent with parameter clipping.</td>
+      <td>Unified training loop: cell setup with <code>make_trainable()</code>, optimizer creation (Adam/SGD/RMSProp/Polyak via optax) with optional gradient clipping, LR scheduling, and Polyak gradient normalization, gradient descent with parameter clipping.</td>
     </tr>
     <tr>
       <td><strong>evaluation</strong></td>
@@ -257,7 +257,7 @@
     <span class="dir">core/</span>
         <span class="file">__init__.py</span>
         <span class="file">data.py</span>                <span class="comment">TraceData, load_trace(), detect_spikes()</span>
-        <span class="file">parameters.py</span>          <span class="comment">DEFAULT_PARAMS, PARAM_BOUNDS, AdExParams, ParamBounds</span>
+        <span class="file">parameters.py</span>          <span class="comment">DEFAULT_PARAMS, PARAM_BOUNDS, NAUD_PARAMETERS, AdExParams, ParamBounds</span>
         <span class="file">simulation.py</span>          <span class="comment">SimulationResult, create_adex_cell(), simulate_*()</span>
     <span class="dir">loss/</span>
         <span class="file">__init__.py</span>
@@ -271,7 +271,7 @@
         <span class="file">__init__.py</span>
         <span class="file">coincidence.py</span>         <span class="comment">CoincidenceResult, coincidence_factor() (&Gamma;)</span>
     <span class="file">plotting.py</span>                <span class="comment">Trace plots, training diagnostics, spike timing</span>
-    <span class="dir">tests/</span>                     <span class="comment">pytest suite (144 tests)</span>
+    <span class="dir">tests/</span>                     <span class="comment">pytest suite (193 tests)</span>
 <span class="dir">notebooks/</span>                     <span class="comment">Jupyter notebooks</span>
 </div>
 
@@ -322,6 +322,7 @@
       <dt>weight_inv_last_isi</dt>   <dd>float (1.0)</dd>
       <dt>weight_firing_freq</dt>    <dd>float (1.0)</dd>
       <dt>weight_v_stim_end</dt>     <dd>float (1.0)</dd>
+      <dt>weight_spike_count</dt>    <dd>float (1.0)</dd>
     </dl>
     <div class="sep"></div>
     <ul>
@@ -472,6 +473,7 @@
       <dt>weight_inv_first/last_isi</dt><dd>float (1.0 each)</dd>
       <dt>weight_firing_freq</dt>      <dd>float (1.0)</dd>
       <dt>weight_v_stim_end</dt>       <dd>float (1.0)</dd>
+      <dt>weight_spike_count</dt>      <dd>float (0.0) &mdash; (n_sim &minus; n_exp)&sup2; term, scales with mismatch</dd>
       <dt>missing_feature_penalty</dt> <dd>float (3.0)</dd>
       <dt>epsilon</dt>                 <dd>float (1e-6)</dd>
     </dl>
@@ -518,9 +520,14 @@
   <div class="card">
     <div class="card-title">TrainingConfig <span class="badge">dataclass</span></div>
     <dl>
-      <dt>optimizer</dt>       <dd>"adam" | "sgd" | "rmsprop"</dd>
+      <dt>optimizer</dt>       <dd>"adam" | "sgd" | "rmsprop" | "polyak"</dd>
       <dt>learning_rate</dt>   <dd>float (0.1)</dd>
       <dt>n_epochs</dt>        <dd>int (500)</dd>
+      <dt>grad_clip_norm</dt>  <dd>float | None &mdash; max gradient L2 norm (optax.clip_by_global_norm)</dd>
+      <dt>lr_schedule</dt>     <dd>"constant" | "cosine" | "exponential" | None</dd>
+      <dt>lr_decay_rate</dt>   <dd>float (0.01) &mdash; final/initial LR ratio for exponential</dd>
+      <dt>polyak_alpha</dt>    <dd>float (1.0) &mdash; loss exponent for Polyak scaling</dd>
+      <dt>polyak_beta</dt>     <dd>float (1.0) &mdash; gradient norm exponent for Polyak normalization</dd>
       <dt>surrogate_type</dt>  <dd>str</dd>
       <dt>surrogate_slope</dt> <dd>float</dd>
       <dt>clip_to_bounds</dt>  <dd>bool</dd>
@@ -536,12 +543,13 @@
       <dt>time_per_epoch</dt>   <dd>[float]</dd>
       <dt>config</dt>           <dd>TrainingConfig</dd>
       <dt>initial_params</dt>   <dd>dict</dd>
-      <dt>grad_norms</dt>       <dd>[float]</dd>
+      <dt>grad_norms</dt>       <dd>[float] &mdash; raw (pre-clip) gradient L2 norms</dd>
+      <dt>lr_history</dt>       <dd>[float] &mdash; per-epoch LR (populated when schedule or polyak active)</dd>
     </dl>
     <div class="sep"></div>
     <ul>
       <li><code>get_params_dict()</code> &rarr; {"g_L": float, ...} (strips <code>AdEx_</code> prefix)</li>
-      <li><code>final_loss</code>, <code>total_time</code>, <code>mean_time_per_epoch</code></li>
+      <li><code>final_loss</code>, <code>best_loss</code>, <code>total_time</code>, <code>mean_time_per_epoch</code></li>
     </ul>
   </div>
 
@@ -563,7 +571,7 @@
       <li><code>setup_trainable_cell(params, current, dt)</code> &rarr; (cell, data_stimuli, t_max, params)<br>
         Creates cell with <code>make_trainable()</code> and <code>data_stimulate()</code></li>
       <li><code>train(loss_fn, params, config)</code> &rarr; TrainingResult<br>
-        Gradient descent loop with early stopping, clipping, logging</li>
+        Gradient descent loop with optional gradient clipping, LR scheduling, Polyak normalization, early stopping, parameter clipping, logging</li>
     </ul>
   </div>
 
@@ -573,10 +581,10 @@
       <li><code>trace_plot(trace)</code>, <code>trace_stim_window_plot(trace)</code> &mdash; raw trace visualization</li>
       <li><code>traces_overlay_plot(traces, labels)</code> &mdash; overlay multiple traces</li>
       <li><code>fit_comparison_plot(trace, sim)</code> &mdash; experimental vs simulated</li>
-      <li><code>training_history_plot(result)</code> &mdash; loss curve + gradient norms</li>
+      <li><code>training_history_plot(result)</code> &mdash; loss curve + gradient norms + LR schedule</li>
       <li><code>training_comparison_plot(results, labels)</code> &mdash; compare multiple training runs</li>
       <li><code>parameter_comparison_plot(result, bounds)</code> &mdash; normalized parameter bar chart</li>
-      <li><code>fit_before_after_plot(trace, sim_init, sim_trained, cf)</code> &mdash; before/after with raster</li>
+      <li><code>fit_before_after_plot(trace, sim_init, sim_trained, coincidence, labels)</code> &mdash; before/after with raster (supports multiple trained sims)</li>
       <li><code>spike_timing_plot(trace, sim, cf)</code> &mdash; coincidence windows + timing error stems</li>
     </ul>
   </div>

@@ -3,11 +3,11 @@
 import numpy as np
 import pytest
 
-from ADoptEX.evaluation.coincidence import (CoincidenceResult, coincidence_factor,
-                                             coincidence_factor_from_traces,
-                                             count_coincidences, detect_spike_times,
-                                             detect_spike_times_from_spike_trace,
-                                             global_performance, intrinsic_reliability)
+from ADoptEX.evaluation.coincidence import (
+    CoincidenceResult, coincidence_factor, coincidence_factor_from_traces,
+    count_coincidences, detect_spike_times,
+    detect_spike_times_from_spike_trace, global_performance,
+    intrinsic_reliability)
 
 # =========================================================================
 # count_coincidences

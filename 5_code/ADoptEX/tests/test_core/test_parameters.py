@@ -3,8 +3,8 @@
 import jax.numpy as jnp
 import pytest
 
-from ADoptEX.core.parameters import (DEFAULT_PARAMS, NAUD_PARAMETERS, PARAM_BOUNDS,
-                                     ParamBounds, clip_params,
+from ADoptEX.core.parameters import (DEFAULT_PARAMS, NAUD_PARAMETERS,
+                                     PARAM_BOUNDS, ParamBounds, clip_params,
                                      convert_trainable_to_params,
                                      params_to_trainable_format)
 

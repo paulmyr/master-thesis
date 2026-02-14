@@ -83,14 +83,18 @@ class TestMSELoss:
         sim = jnp.array([-70.0, -65.0, -55.0, -50.0])
         exp = jnp.array([-72.0, -63.0, -57.0, -48.0])
         cfg = MSELossConfig(clamp_threshold=threshold)
-        assert float(mse_loss(sim, exp, cfg)) == pytest.approx(float(mse_loss(sim, exp)))
+        assert float(mse_loss(sim, exp, cfg)) == pytest.approx(
+            float(mse_loss(sim, exp))
+        )
 
     def test_clamp_none_is_default(self):
         """clamp_threshold=None gives same result as no config."""
         sim = jnp.array([-70.0, -50.0, 20.0, -60.0])
         exp = jnp.array([-65.0, -45.0, 30.0, -55.0])
         cfg_none = MSELossConfig(clamp_threshold=None)
-        assert float(mse_loss(sim, exp, cfg_none)) == pytest.approx(float(mse_loss(sim, exp)))
+        assert float(mse_loss(sim, exp, cfg_none)) == pytest.approx(
+            float(mse_loss(sim, exp))
+        )
 
     def test_clamp_differentiable(self):
         """Gradient through clamped loss is finite."""

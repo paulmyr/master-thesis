@@ -4,8 +4,8 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from ADoptEX.loss.guarino import (GuarinoFeatures, GuarinoLossConfig, guarino_loss,
-                                  relative_error)
+from ADoptEX.loss.guarino import (GuarinoFeatures, GuarinoLossConfig,
+                                  guarino_loss, relative_error)
 
 # =========================================================================
 # relative_error
@@ -147,6 +147,90 @@ class TestGuarinoLoss:
 
         g = jax.grad(loss_fn)(jnp.array(15.0))
         assert jnp.isfinite(g)
+
+
+# =========================================================================
+# Spike count squared error term
+# =========================================================================
+
+
+class TestSpikeCountLoss:
+    def test_zero_weight_no_contribution(self):
+        """Default weight_spike_count=0 adds nothing."""
+        f = _make_features()
+        cfg_off = GuarinoLossConfig(weight_spike_count=0.0)
+        cfg_on = GuarinoLossConfig(weight_spike_count=1.0)
+        loss_off = float(guarino_loss(f, f, cfg_off))
+        loss_on = float(guarino_loss(f, f, cfg_on))
+        # Identical features → spike count error is 0 → same loss either way
+        assert loss_off == pytest.approx(loss_on, abs=1e-6)
+
+    def test_scales_with_spike_count_difference(self):
+        """Loss should increase with larger spike count mismatch."""
+        exp = _make_features(n_spikes=jnp.array(10.0))
+        cfg = GuarinoLossConfig(weight_spike_count=1.0, missing_feature_penalty=0.0)
+
+        sim_close = _make_features(n_spikes=jnp.array(8.0))
+        sim_far = _make_features(n_spikes=jnp.array(2.0))
+
+        loss_close = float(guarino_loss(sim_close, exp, cfg))
+        loss_far = float(guarino_loss(sim_far, exp, cfg))
+        assert loss_far > loss_close
+
+    def test_known_value(self):
+        """(3 - 10)^2 * weight = 49 * 0.5 = 24.5 contribution."""
+        exp = _make_features(n_spikes=jnp.array(10.0))
+        sim = _make_features(n_spikes=jnp.array(3.0))
+        # Use weight_spike_count only, disable everything else
+        cfg = GuarinoLossConfig(
+            weight_spike_count=0.5,
+            weight_t_first=0.0,
+            weight_t_second=0.0,
+            weight_t_third=0.0,
+            weight_t_last=0.0,
+            weight_inv_first_isi=0.0,
+            weight_inv_last_isi=0.0,
+            weight_firing_freq=0.0,
+            weight_v_stim_end=0.0,
+            missing_feature_penalty=0.0,
+        )
+        loss = float(guarino_loss(sim, exp, cfg))
+        assert loss == pytest.approx(24.5, abs=1e-4)
+
+    def test_symmetric(self):
+        """Too many spikes penalized equally to too few."""
+        exp = _make_features(n_spikes=jnp.array(5.0))
+        cfg = GuarinoLossConfig(
+            weight_spike_count=1.0,
+            weight_t_first=0.0,
+            weight_t_second=0.0,
+            weight_t_third=0.0,
+            weight_t_last=0.0,
+            weight_inv_first_isi=0.0,
+            weight_inv_last_isi=0.0,
+            weight_firing_freq=0.0,
+            weight_v_stim_end=0.0,
+            missing_feature_penalty=0.0,
+        )
+        sim_under = _make_features(n_spikes=jnp.array(2.0))
+        sim_over = _make_features(n_spikes=jnp.array(8.0))
+        loss_under = float(guarino_loss(sim_under, exp, cfg))
+        loss_over = float(guarino_loss(sim_over, exp, cfg))
+        assert loss_under == pytest.approx(loss_over, abs=1e-4)
+
+    def test_differentiable(self):
+        """Spike count term should be differentiable w.r.t. n_spikes."""
+        exp = _make_features(n_spikes=jnp.array(10.0))
+        cfg = GuarinoLossConfig(weight_spike_count=1.0)
+
+        def loss_fn(n):
+            sim = _make_features(n_spikes=n)
+            return guarino_loss(sim, exp, cfg)
+
+        g = jax.grad(loss_fn)(jnp.array(3.0))
+        assert jnp.isfinite(g)
+        # Gradient of (3-10)^2 w.r.t. n = 2*(3-10) = -14
+        assert float(g) == pytest.approx(-14.0, abs=0.1)
 
 
 # We need numpy for the random generator above

@@ -40,9 +40,7 @@ def trace_plot(
         Matplotlib Figure
     """
     n_rows = 2 if show_current else 1
-    fig, axes = plt.subplots(
-        n_rows, 1, figsize=figsize, sharex=True, squeeze=False
-    )
+    fig, axes = plt.subplots(n_rows, 1, figsize=figsize, sharex=True, squeeze=False)
     ax_v = axes[0, 0]
 
     # Voltage trace
@@ -59,7 +57,10 @@ def trace_plot(
             ax_v.axvline(st, color="r", linestyle=":", alpha=0.5, linewidth=0.7)
         # Invisible line for legend entry
         ax_v.axvline(
-            trace.spike_times[0], color="r", linestyle=":", alpha=0,
+            trace.spike_times[0],
+            color="r",
+            linestyle=":",
+            alpha=0,
             label=f"Spikes ({trace.n_spikes})",
         )
 
@@ -197,10 +198,21 @@ def fit_comparison_plot(
 
     # Voltage comparison
     ax_v = axes[0]
-    ax_v.plot(trace.time, trace.voltage, color="gray", linewidth=0.6,
-              alpha=0.7, label=f"Experimental ({trace.n_spikes} spikes)")
-    ax_v.plot(sim.time, sim.voltage, color="tab:blue", linewidth=0.6,
-              label=f"Simulated ({sim.n_spikes} spikes)")
+    ax_v.plot(
+        trace.time,
+        trace.voltage,
+        color="gray",
+        linewidth=0.6,
+        alpha=0.7,
+        label=f"Experimental ({trace.n_spikes} spikes)",
+    )
+    ax_v.plot(
+        sim.time,
+        sim.voltage,
+        color="tab:blue",
+        linewidth=0.6,
+        label=f"Simulated ({sim.n_spikes} spikes)",
+    )
     ax_v.set_ylabel("Voltage (mV)")
     ax_v.legend(fontsize=8)
     ax_v.grid(True, alpha=0.2)
@@ -245,7 +257,12 @@ def training_history_plot(
     result: TrainingResult,
     figsize: tuple[float, float] = (10, 6),
 ) -> Figure:
-    """Plot training loss curve and gradient norms.
+    """Plot training loss curve, gradient norms, and learning rate schedule.
+
+    Rows shown depend on available data:
+    - Loss curve (always)
+    - Gradient norms (when ``grad_norms`` is non-empty)
+    - Learning rate (when ``lr_history`` is non-empty, i.e. a schedule was active)
 
     Args:
         result: TrainingResult from training
@@ -255,15 +272,15 @@ def training_history_plot(
         Matplotlib Figure
     """
     has_grads = len(result.grad_norms) > 0
-    n_rows = 2 if has_grads else 1
-    fig, axes = plt.subplots(
-        n_rows, 1, figsize=figsize, sharex=True, squeeze=False
-    )
+    has_lr = len(result.lr_history) > 0
+    n_rows = 1 + has_grads + has_lr
+    fig, axes = plt.subplots(n_rows, 1, figsize=figsize, sharex=True, squeeze=False)
 
     epochs = np.arange(len(result.loss_history))
+    row = 0
 
     # Loss curve
-    ax_loss = axes[0, 0]
+    ax_loss = axes[row, 0]
     ax_loss.plot(epochs, result.loss_history, color="k", linewidth=0.8)
     ax_loss.set_ylabel("Loss")
     ax_loss.set_yscale("log")
@@ -284,27 +301,60 @@ def training_history_plot(
 
     # Gradient norms
     if has_grads:
-        ax_grad = axes[1, 0]
+        row += 1
+        ax_grad = axes[row, 0]
+        grad_epochs = np.arange(len(result.grad_norms))
+        has_clipped = len(result.clipped_grad_norms) > 0
         ax_grad.plot(
-            np.arange(len(result.grad_norms)),
+            grad_epochs,
             result.grad_norms,
-            color="tab:blue",
+            color="tab:red" if has_clipped else "tab:blue",
             linewidth=0.8,
+            alpha=0.6 if has_clipped else 1.0,
+            label="Raw" if has_clipped else "Gradient norm",
         )
+        if has_clipped:
+            ax_grad.plot(
+                np.arange(len(result.clipped_grad_norms)),
+                result.clipped_grad_norms,
+                color="tab:blue",
+                linewidth=0.8,
+                label="Clipped",
+            )
+            ax_grad.legend(fontsize=8)
         ax_grad.set_ylabel("Gradient norm")
         ax_grad.set_yscale("log")
-        ax_grad.set_xlabel("Epoch")
         ax_grad.grid(True, alpha=0.2)
-    else:
-        ax_loss.set_xlabel("Epoch")
+
+    # Learning rate schedule
+    if has_lr:
+        row += 1
+        ax_lr = axes[row, 0]
+        ax_lr.plot(
+            np.arange(len(result.lr_history)),
+            result.lr_history,
+            color="tab:purple",
+            linewidth=0.8,
+        )
+        ax_lr.set_ylabel("Learning rate")
+        ax_lr.grid(True, alpha=0.2)
+
+    # X-axis label on bottom row only
+    axes[row, 0].set_xlabel("Epoch")
 
     cfg = result.config
-    fig.suptitle(
-        f"{cfg.optimizer} | lr={cfg.learning_rate} | "
-        f"{cfg.surrogate_type} | {len(result.loss_history)} epochs | "
+    title_parts = [
+        f"{cfg.optimizer}",
+        f"lr={cfg.learning_rate}",
+        f"{cfg.surrogate_type}",
+        f"{len(result.loss_history)} epochs",
         f"{result.total_time:.1f}s",
-        fontsize=9,
-    )
+    ]
+    if cfg.lr_schedule:
+        title_parts.append(f"schedule={cfg.lr_schedule}")
+    if cfg.grad_clip_norm is not None:
+        title_parts.append(f"clip={cfg.grad_clip_norm}")
+    fig.suptitle(" | ".join(title_parts), fontsize=9)
     fig.tight_layout()
     return fig
 
@@ -327,9 +377,7 @@ def training_comparison_plot(
         Matplotlib Figure
     """
     n_rows = 2 if show_grad_norms else 1
-    fig, axes = plt.subplots(
-        n_rows, 1, figsize=figsize, sharex=True, squeeze=False
-    )
+    fig, axes = plt.subplots(n_rows, 1, figsize=figsize, sharex=True, squeeze=False)
 
     colors = plt.cm.tab10(np.linspace(0, 1, min(len(results), 10)))
 
@@ -339,8 +387,12 @@ def training_comparison_plot(
         ax_loss.plot(epochs, res.loss_history, color=color, linewidth=0.8, label=label)
         best_ep = int(np.argmin(res.loss_history))
         ax_loss.plot(
-            best_ep, res.loss_history[best_ep], "*",
-            color=color, markersize=8, zorder=5,
+            best_ep,
+            res.loss_history[best_ep],
+            "*",
+            color=color,
+            markersize=8,
+            zorder=5,
         )
 
     ax_loss.set_ylabel("Loss")
@@ -355,7 +407,9 @@ def training_comparison_plot(
                 ax_grad.plot(
                     np.arange(len(res.grad_norms)),
                     res.grad_norms,
-                    color=color, linewidth=0.8, label=label,
+                    color=color,
+                    linewidth=0.8,
+                    label=label,
                 )
         ax_grad.set_ylabel("Gradient norm")
         ax_grad.set_yscale("log")
@@ -423,7 +477,8 @@ def parameter_comparison_plot(
         # Arrow from initial to trained
         ax.annotate(
             "",
-            xy=(train_norm, i), xytext=(init_norm, i),
+            xy=(train_norm, i),
+            xytext=(init_norm, i),
             arrowprops=dict(arrowstyle="->", color="tab:blue", lw=1.2),
         )
 
@@ -433,8 +488,13 @@ def parameter_comparison_plot(
 
         # Annotate trained value
         ax.text(
-            1.02, i, f"{train_val:.3f}",
-            va="center", ha="left", fontsize=8, color="tab:blue",
+            1.02,
+            i,
+            f"{train_val:.3f}",
+            va="center",
+            ha="left",
+            fontsize=8,
+            color="tab:blue",
         )
 
     ax.set_yticks(y_positions)
@@ -457,19 +517,26 @@ def parameter_comparison_plot(
 def fit_before_after_plot(
     trace: TraceData,
     sim_initial: SimulationResult,
-    sim_trained: SimulationResult,
-    coincidence: CoincidenceResult | None = None,
+    sim_trained: SimulationResult | Sequence[SimulationResult],
+    coincidence: CoincidenceResult | Sequence[CoincidenceResult | None] | None = None,
+    labels: Sequence[str] | None = None,
     stim_window_only: bool = True,
     padding_ms: float = 20.0,
     figsize: tuple[float, float] = (12, 8),
 ) -> Figure:
     """Before/after comparison of experimental trace vs initial and trained simulations.
 
+    Supports multiple trained results (e.g. multi-stage training). Each trained sim
+    gets its own "After" row. Passing a single SimulationResult works as before.
+
     Args:
         trace: Experimental TraceData
         sim_initial: SimulationResult with initial parameters
-        sim_trained: SimulationResult with trained parameters
-        coincidence: Optional CoincidenceResult for Gamma annotation
+        sim_trained: Single or sequence of trained SimulationResults
+        coincidence: Single or sequence of CoincidenceResults (one per trained sim).
+            Use None entries for sims without a coincidence result.
+        labels: Labels for each trained sim (e.g. ["Stage 1", "Stage 2"]).
+            Defaults to "Trained" for single, "Stage 1", "Stage 2", ... for multiple.
         stim_window_only: Zoom to stimulation window
         padding_ms: Padding around stim window
         figsize: Figure size
@@ -477,18 +544,53 @@ def fit_before_after_plot(
     Returns:
         Matplotlib Figure
     """
-    fig, axes = plt.subplots(3, 1, figsize=figsize, sharex=True)
+    # Normalize to lists
+    if not isinstance(sim_trained, Sequence):
+        trained_sims = [sim_trained]
+    else:
+        trained_sims = list(sim_trained)
 
-    n = min(len(trace.time), len(sim_initial.time), len(sim_trained.time))
+    n_trained = len(trained_sims)
+
+    if coincidence is None:
+        coincidences: list[CoincidenceResult | None] = [None] * n_trained
+    elif not isinstance(coincidence, Sequence):
+        coincidences = [coincidence]
+    else:
+        coincidences = list(coincidence)
+
+    if labels is None:
+        if n_trained == 1:
+            sim_labels = ["Trained"]
+        else:
+            sim_labels = [f"Stage {i + 1}" for i in range(n_trained)]
+    else:
+        sim_labels = list(labels)
+
+    trained_colors = ["tab:blue", "tab:green", "tab:red", "tab:purple", "tab:cyan"]
+
+    # 1 row for "before" + 1 row per trained sim + 1 row for spike raster
+    n_rows = 1 + n_trained + 1
+    fig, axes = plt.subplots(n_rows, 1, figsize=figsize, sharex=True)
+
+    n = min(len(trace.time), len(sim_initial.time), *(len(s.time) for s in trained_sims))
     time = trace.time[:n]
 
     # Row 1: Before
     ax_before = axes[0]
-    ax_before.plot(time, trace.voltage[:n], color="k", linewidth=0.6,
-                   alpha=0.7, label=f"Experimental ({trace.n_spikes})")
     ax_before.plot(
-        sim_initial.time[:n], sim_initial.voltage[:n],
-        color="tab:orange", linewidth=0.6,
+        time,
+        trace.voltage[:n],
+        color="k",
+        linewidth=0.6,
+        alpha=0.7,
+        label=f"Experimental ({trace.n_spikes})",
+    )
+    ax_before.plot(
+        sim_initial.time[:n],
+        sim_initial.voltage[:n],
+        color="tab:orange",
+        linewidth=0.6,
         label=f"Initial ({sim_initial.n_spikes})",
     )
     ax_before.set_ylabel("Voltage (mV)")
@@ -496,29 +598,39 @@ def fit_before_after_plot(
     ax_before.set_title("Before training", fontsize=9)
     ax_before.grid(True, alpha=0.2)
 
-    # Row 2: After
-    ax_after = axes[1]
-    ax_after.plot(time, trace.voltage[:n], color="k", linewidth=0.6,
-                  alpha=0.7, label=f"Experimental ({trace.n_spikes})")
-    trained_label = f"Trained ({sim_trained.n_spikes})"
-    if coincidence is not None:
-        trained_label += f" | \u0393={coincidence.gamma:.3f}"
-    ax_after.plot(
-        sim_trained.time[:n], sim_trained.voltage[:n],
-        color="tab:blue", linewidth=0.6, label=trained_label,
-    )
-    ax_after.set_ylabel("Voltage (mV)")
-    ax_after.legend(fontsize=8, loc="upper right")
-    if coincidence is not None:
-        ax_after.set_title(
-            f"After training | \u0393={coincidence.gamma:.3f}", fontsize=9,
+    # Rows 2..N: After (one per trained sim)
+    for i, (sim, cf, label, color) in enumerate(
+        zip(trained_sims, coincidences, sim_labels, trained_colors)
+    ):
+        ax = axes[1 + i]
+        ax.plot(
+            time,
+            trace.voltage[:n],
+            color="k",
+            linewidth=0.6,
+            alpha=0.7,
+            label=f"Experimental ({trace.n_spikes})",
         )
-    else:
-        ax_after.set_title("After training", fontsize=9)
-    ax_after.grid(True, alpha=0.2)
+        trained_label = f"{label} ({sim.n_spikes})"
+        if cf is not None:
+            trained_label += f" | Γ={cf.gamma:.3f}"
+        ax.plot(
+            sim.time[:n],
+            sim.voltage[:n],
+            color=color,
+            linewidth=0.6,
+            label=trained_label,
+        )
+        ax.set_ylabel("Voltage (mV)")
+        ax.legend(fontsize=8, loc="upper right")
+        title = f"After training — {label}"
+        if cf is not None:
+            title += f" | Γ={cf.gamma:.3f}"
+        ax.set_title(title, fontsize=9)
+        ax.grid(True, alpha=0.2)
 
-    # Row 3: Spike raster
-    ax_raster = axes[2]
+    # Last row: Spike raster
+    ax_raster = axes[-1]
     trains = []
     colors = []
     y_labels = []
@@ -531,10 +643,11 @@ def fit_before_after_plot(
         trains.append(sim_initial.spike_times)
         colors.append("tab:orange")
         y_labels.append("Initial")
-    if len(sim_trained.spike_times) > 0:
-        trains.append(sim_trained.spike_times)
-        colors.append("tab:blue")
-        y_labels.append("Trained")
+    for sim, label, color in zip(trained_sims, sim_labels, trained_colors):
+        if len(sim.spike_times) > 0:
+            trains.append(sim.spike_times)
+            colors.append(color)
+            y_labels.append(label)
 
     if trains:
         ax_raster.eventplot(trains, colors=colors, linelengths=0.6)
@@ -615,19 +728,28 @@ def spike_timing_plot(
     # Draw coincidence windows around data spikes
     for st in trace.spike_times:
         ax_top.axvspan(
-            st - delta, st + delta,
-            color="green", alpha=0.12, linewidth=0,
+            st - delta,
+            st + delta,
+            color="green",
+            alpha=0.12,
+            linewidth=0,
         )
 
     # Data spike markers
     ax_top.eventplot(
-        [trace.spike_times], lineoffsets=1.0, linelengths=0.6,
-        colors=["k"], label=f"Data ({len(trace.spike_times)})",
+        [trace.spike_times],
+        lineoffsets=1.0,
+        linelengths=0.6,
+        colors=["k"],
+        label=f"Data ({len(trace.spike_times)})",
     )
     # Model spike markers
     ax_top.eventplot(
-        [sim.spike_times], lineoffsets=0.0, linelengths=0.6,
-        colors=["tab:blue"], label=f"Model ({len(sim.spike_times)})",
+        [sim.spike_times],
+        lineoffsets=0.0,
+        linelengths=0.6,
+        colors=["tab:blue"],
+        label=f"Model ({len(sim.spike_times)})",
     )
 
     # Connecting lines for matched spikes
@@ -635,29 +757,43 @@ def spike_timing_plot(
         ax_top.plot(
             [trace.spike_times[d_idx], sim.spike_times[m_idx]],
             [1.0, 0.0],
-            color="green", linewidth=0.6, alpha=0.6,
+            color="green",
+            linewidth=0.6,
+            alpha=0.6,
         )
 
     # Red x for unmatched data spikes
     unmatched_data = [
-        trace.spike_times[i] for i in range(len(trace.spike_times))
+        trace.spike_times[i]
+        for i in range(len(trace.spike_times))
         if i not in matched_data_idxs
     ]
     if unmatched_data:
         ax_top.scatter(
-            unmatched_data, [1.0] * len(unmatched_data),
-            marker="x", color="r", s=30, zorder=5, label="Unmatched data",
+            unmatched_data,
+            [1.0] * len(unmatched_data),
+            marker="x",
+            color="r",
+            s=30,
+            zorder=5,
+            label="Unmatched data",
         )
 
     # Red x for unmatched model spikes
     unmatched_model = [
-        sim.spike_times[i] for i in range(len(sim.spike_times))
+        sim.spike_times[i]
+        for i in range(len(sim.spike_times))
         if i not in matched_model_idxs
     ]
     if unmatched_model:
         ax_top.scatter(
-            unmatched_model, [0.0] * len(unmatched_model),
-            marker="x", color="r", s=30, zorder=5, label="Unmatched model",
+            unmatched_model,
+            [0.0] * len(unmatched_model),
+            marker="x",
+            color="r",
+            s=30,
+            zorder=5,
+            label="Unmatched model",
         )
 
     ax_top.set_yticks([0, 1])
@@ -677,15 +813,20 @@ def spike_timing_plot(
         data_times = [trace.spike_times[m[0]] for m in matches]
         errors = [m[2] for m in matches]
         ax_bot.stem(
-            data_times, errors,
-            linefmt="tab:blue", markerfmt="o", basefmt="k-",
+            data_times,
+            errors,
+            linefmt="tab:blue",
+            markerfmt="o",
+            basefmt="k-",
         )
         ax_bot.axhline(0, color="k", linewidth=0.5)
         ax_bot.axhline(delta, color="green", linewidth=0.5, linestyle="--", alpha=0.5)
         ax_bot.axhline(-delta, color="green", linewidth=0.5, linestyle="--", alpha=0.5)
 
         mean_err = np.mean(np.abs(errors))
-        ax_bot.set_title(f"Timing error per spike | mean |error| = {mean_err:.2f} ms", fontsize=9)
+        ax_bot.set_title(
+            f"Timing error per spike | mean |error| = {mean_err:.2f} ms", fontsize=9
+        )
     else:
         ax_bot.set_title("No matched spikes", fontsize=9)
 

@@ -121,14 +121,14 @@ class ParamBounds:
 
 PARAM_BOUNDS: dict[str, ParamBounds] = {
     "C_m": ParamBounds(50.0, 500.0),
-    "g_L": ParamBounds(1.0, 50.0),
+    "g_L": ParamBounds(1.0, 20.0),
     "E_L": ParamBounds(-90.0, -50.0),
-    "v_T": ParamBounds(-60.0, -40.0),
+    "v_T": ParamBounds(-60.0, -35.0),
     "delta_T": ParamBounds(0.5, 5.0),
-    "v_reset": ParamBounds(-80.0, -50.0),
-    "v_threshold": ParamBounds(-20.0, 30.0),
+    "v_reset": ParamBounds(-65.0, -40.0),
+    "v_threshold": ParamBounds(0.0, 35.0),
     "tau_w": ParamBounds(10.0, 500.0),
-    "a": ParamBounds(0.0, 10.0),
+    "a": ParamBounds(-20, 20.0),
     "b": ParamBounds(0.0, 200.0),
 }
 
