@@ -3,7 +3,12 @@
 import jax.numpy as jnp
 import pytest
 
-from ADoptEX.training.trainer import TrainingConfig, _create_optimizer, train
+from ADoptEX.training.trainer import (TrainingConfig, TrainingResult,
+                                      _build_param_transform,
+                                      _clip_trainable_params,
+                                      _create_optimizer, _format_params,
+                                      _nudge_from_bounds,
+                                      _param_key_to_bounds_key, train)
 
 # =========================================================================
 # Fixtures
@@ -448,3 +453,295 @@ class TestPolyakOptimizer:
         config = TrainingConfig(optimizer="polyak")
         assert config.polyak_alpha == 1.0
         assert config.polyak_beta == 1.0
+
+
+# =========================================================================
+# Capacitance / C_m mapping
+# =========================================================================
+
+
+class TestCapacitanceMapping:
+    @pytest.fixture
+    def params_with_capacitance(self):
+        """Trainable params including capacitance (as Jaxley would produce)."""
+        return [
+            {"capacitance": jnp.array([200.0])},
+            {"AdEx_g_L": jnp.array([10.0])},
+        ]
+
+    def test_clip_trainable_params_handles_capacitance(self):
+        """_clip_trainable_params should look up C_m bounds for capacitance key."""
+        from ADoptEX.core.parameters import PARAM_BOUNDS
+
+        params = [{"capacitance": jnp.array([999.0])}]
+        clipped = _clip_trainable_params(params, PARAM_BOUNDS)
+        assert clipped[0]["capacitance"].item() == PARAM_BOUNDS["C_m"].max
+
+    def test_format_params_maps_capacitance_to_c_m(self):
+        """_format_params should display 'C_m' not 'capacitance'."""
+        params = [{"capacitance": jnp.array([200.0])}]
+        formatted = _format_params(params)
+        assert "C_m=" in formatted
+        assert "capacitance" not in formatted
+
+    def test_get_params_dict_maps_capacitance_to_c_m(self, params_with_capacitance):
+        """TrainingResult.get_params_dict() should map capacitance -> C_m."""
+        result = TrainingResult(
+            trainable_params=params_with_capacitance,
+            loss_history=[1.0],
+            time_per_epoch=[0.1],
+            config=TrainingConfig(),
+            initial_params={},
+        )
+        params_dict = result.get_params_dict()
+        assert "C_m" in params_dict
+        assert "capacitance" not in params_dict
+        assert params_dict["C_m"] == pytest.approx(200.0)
+
+    def test_trainable_params_config_accepts_c_m(self):
+        """TrainingConfig should accept C_m in trainable_params list."""
+        config = TrainingConfig(trainable_params=["C_m", "g_L"])
+        assert "C_m" in config.trainable_params
+
+
+# =========================================================================
+# _param_key_to_bounds_key
+# =========================================================================
+
+
+class TestParamKeyToBoundsKey:
+    def test_strips_adex_prefix(self):
+        assert _param_key_to_bounds_key("AdEx_g_L") == "g_L"
+
+    def test_maps_capacitance_to_c_m(self):
+        assert _param_key_to_bounds_key("capacitance") == "C_m"
+
+    def test_adex_capacitance_maps_to_c_m(self):
+        assert _param_key_to_bounds_key("AdEx_capacitance") == "C_m"
+
+    def test_no_prefix_passthrough(self):
+        assert _param_key_to_bounds_key("tau_w") == "tau_w"
+
+
+# =========================================================================
+# _nudge_from_bounds
+# =========================================================================
+
+
+class TestNudgeFromBounds:
+    def test_nudges_at_lower_bound(self):
+        from ADoptEX.core.parameters import PARAM_BOUNDS
+
+        params = [{"AdEx_g_L": jnp.array([PARAM_BOUNDS["g_L"].min])}]
+        nudged = _nudge_from_bounds(params, PARAM_BOUNDS)
+        val = nudged[0]["AdEx_g_L"].item()
+        assert val > PARAM_BOUNDS["g_L"].min
+        assert val < PARAM_BOUNDS["g_L"].min + 0.01 * (
+            PARAM_BOUNDS["g_L"].max - PARAM_BOUNDS["g_L"].min
+        )
+
+    def test_nudges_at_upper_bound(self):
+        from ADoptEX.core.parameters import PARAM_BOUNDS
+
+        params = [{"AdEx_g_L": jnp.array([PARAM_BOUNDS["g_L"].max])}]
+        nudged = _nudge_from_bounds(params, PARAM_BOUNDS)
+        val = nudged[0]["AdEx_g_L"].item()
+        assert val < PARAM_BOUNDS["g_L"].max
+
+    def test_noop_for_interior_values(self):
+        from ADoptEX.core.parameters import PARAM_BOUNDS
+
+        mid = (PARAM_BOUNDS["g_L"].min + PARAM_BOUNDS["g_L"].max) / 2
+        params = [{"AdEx_g_L": jnp.array([mid])}]
+        nudged = _nudge_from_bounds(params, PARAM_BOUNDS)
+        assert nudged[0]["AdEx_g_L"].item() == pytest.approx(mid)
+
+    def test_handles_capacitance_key(self):
+        from ADoptEX.core.parameters import PARAM_BOUNDS
+
+        params = [{"capacitance": jnp.array([PARAM_BOUNDS["C_m"].min])}]
+        nudged = _nudge_from_bounds(params, PARAM_BOUNDS)
+        val = nudged[0]["capacitance"].item()
+        assert val > PARAM_BOUNDS["C_m"].min
+
+
+# =========================================================================
+# _build_param_transform
+# =========================================================================
+
+
+class TestBuildParamTransform:
+    def test_builds_successfully(self):
+        from ADoptEX.core.parameters import PARAM_BOUNDS
+
+        params = [{"AdEx_g_L": jnp.array([10.0])}, {"AdEx_E_L": jnp.array([-65.0])}]
+        transform = _build_param_transform(params, PARAM_BOUNDS)
+        assert transform is not None
+
+    def test_roundtrip_forward_inverse(self):
+        from ADoptEX.core.parameters import PARAM_BOUNDS
+
+        params = [{"AdEx_g_L": jnp.array([10.0])}, {"AdEx_E_L": jnp.array([-65.0])}]
+        transform = _build_param_transform(params, PARAM_BOUNDS)
+
+        unconstrained = transform.inverse(params)
+        reconstructed = transform.forward(unconstrained)
+        for orig_d, recon_d in zip(params, reconstructed):
+            for key in orig_d:
+                assert recon_d[key].item() == pytest.approx(
+                    orig_d[key].item(), abs=1e-5
+                )
+
+    def test_forward_stays_in_bounds(self):
+        from ADoptEX.core.parameters import PARAM_BOUNDS
+
+        params = [{"AdEx_g_L": jnp.array([10.0])}, {"AdEx_a": jnp.array([2.0])}]
+        transform = _build_param_transform(params, PARAM_BOUNDS)
+
+        # Extreme unconstrained values should still map inside bounds
+        extreme = [{"AdEx_g_L": jnp.array([100.0])}, {"AdEx_a": jnp.array([-100.0])}]
+        constrained = transform.forward(extreme)
+        g_L = constrained[0]["AdEx_g_L"].item()
+        a = constrained[1]["AdEx_a"].item()
+        assert PARAM_BOUNDS["g_L"].min <= g_L <= PARAM_BOUNDS["g_L"].max
+        assert PARAM_BOUNDS["a"].min <= a <= PARAM_BOUNDS["a"].max
+
+    def test_raises_for_unknown_param(self):
+        from ADoptEX.core.parameters import PARAM_BOUNDS
+
+        params = [{"AdEx_unknown_xyz": jnp.array([1.0])}]
+        with pytest.raises(ValueError, match="No bounds for parameter"):
+            _build_param_transform(params, PARAM_BOUNDS)
+
+
+# =========================================================================
+# Sigmoid reparameterization (integration tests)
+# =========================================================================
+
+
+class TestSigmoidReparameterization:
+    def test_config_default_false(self):
+        config = TrainingConfig()
+        assert config.use_param_transform is False
+
+    def test_convergence_with_transform(self, simple_params, quadratic_loss_fn):
+        """Training with sigmoid transform should still converge on a quadratic."""
+        config = TrainingConfig(
+            n_epochs=100,
+            learning_rate=0.5,
+            use_param_transform=True,
+            clip_to_bounds=False,
+            verbose=False,
+        )
+        result = train(quadratic_loss_fn, simple_params, config)
+        assert result.loss_history[-1] < result.loss_history[0]
+
+    def test_overrides_clip_to_bounds(self, simple_params, quadratic_loss_fn):
+        """When use_param_transform=True, clip_to_bounds should be skipped."""
+        config = TrainingConfig(
+            n_epochs=20,
+            learning_rate=0.1,
+            use_param_transform=True,
+            clip_to_bounds=True,
+            verbose=False,
+        )
+        # Should not raise and should still converge
+        result = train(quadratic_loss_fn, simple_params, config)
+        assert len(result.loss_history) == 20
+
+    def test_final_params_in_bounds(self):
+        """Output params must be within PARAM_BOUNDS."""
+        from ADoptEX.core.parameters import PARAM_BOUNDS
+
+        params = [
+            {"AdEx_g_L": jnp.array([10.0])},
+            {"AdEx_E_L": jnp.array([-65.0])},
+        ]
+
+        def loss_fn(p):
+            return sum(jnp.sum(v**2) for d in p for v in d.values())
+
+        config = TrainingConfig(
+            n_epochs=50,
+            learning_rate=1.0,
+            use_param_transform=True,
+            clip_to_bounds=False,
+            verbose=False,
+        )
+        result = train(loss_fn, params, config)
+        for d in result.trainable_params:
+            for name, value in d.items():
+                bounds_key = _param_key_to_bounds_key(name)
+                bound = PARAM_BOUNDS[bounds_key]
+                val = float(value.flatten()[0])
+                assert (
+                    bound.min <= val <= bound.max
+                ), f"{name}={val} outside [{bound.min}, {bound.max}]"
+
+    def test_return_best_with_transform(self, simple_params, quadratic_loss_fn):
+        """return_best should work correctly with sigmoid transform."""
+        config = TrainingConfig(
+            n_epochs=50,
+            learning_rate=0.5,
+            use_param_transform=True,
+            clip_to_bounds=False,
+            return_best=True,
+            verbose=False,
+        )
+        result = train(quadratic_loss_fn, simple_params, config)
+        assert result.best_epoch >= 0
+        # Best loss should be <= final loss
+        assert result.best_loss <= result.final_loss + 1e-6
+
+    def test_polyak_with_transform(self, simple_params, quadratic_loss_fn):
+        """Polyak + sigmoid transform should be compatible and converge."""
+        config = TrainingConfig(
+            optimizer="polyak",
+            n_epochs=50,
+            learning_rate=0.1,
+            use_param_transform=True,
+            clip_to_bounds=False,
+            verbose=False,
+        )
+        result = train(quadratic_loss_fn, simple_params, config)
+        assert result.loss_history[-1] < result.loss_history[0]
+        assert len(result.lr_history) == 50
+
+    def test_grad_norms_populated(self, simple_params, quadratic_loss_fn):
+        """Gradient norms should still be tracked with transform."""
+        config = TrainingConfig(
+            n_epochs=10,
+            learning_rate=0.1,
+            use_param_transform=True,
+            clip_to_bounds=False,
+            verbose=False,
+        )
+        result = train(quadratic_loss_fn, simple_params, config)
+        assert len(result.grad_norms) == 10
+        assert all(g >= 0 for g in result.grad_norms)
+
+    def test_params_at_exact_bounds_no_nan(self):
+        """Parameters sitting at exact bounds should not produce NaN."""
+        from ADoptEX.core.parameters import PARAM_BOUNDS
+
+        params = [
+            {"AdEx_g_L": jnp.array([PARAM_BOUNDS["g_L"].min])},
+            {"AdEx_E_L": jnp.array([PARAM_BOUNDS["E_L"].max])},
+        ]
+
+        def loss_fn(p):
+            return sum(jnp.sum(v**2) for d in p for v in d.values())
+
+        config = TrainingConfig(
+            n_epochs=10,
+            learning_rate=0.1,
+            use_param_transform=True,
+            clip_to_bounds=False,
+            verbose=False,
+        )
+        result = train(loss_fn, params, config)
+        assert all(not jnp.isnan(l) for l in result.loss_history)
+        # Final params should not be NaN
+        for d in result.trainable_params:
+            for name, value in d.items():
+                assert not jnp.isnan(value).any(), f"{name} is NaN"

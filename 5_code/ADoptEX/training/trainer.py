@@ -46,10 +46,11 @@ class TrainingConfig:
 
     # Surrogate gradient settings
     surrogate_type: Literal["sigmoid", "exponential", "superspike"] = "sigmoid"
-    surrogate_slope: float = 25.0
+    surrogate_slope: float = 5.0
 
     # Parameter constraints
     clip_to_bounds: bool = True
+    use_param_transform: bool = False
 
     # Logging
     print_every: int = 50
@@ -77,6 +78,12 @@ class TrainingConfig:
         ):
             raise ValueError(
                 f"n_epochs must be positive when using lr_schedule, got {self.n_epochs}"
+            )
+        if self.use_param_transform and self.clip_to_bounds:
+            log.warning(
+                "use_param_transform=True with clip_to_bounds=True: "
+                "sigmoid transform implicitly enforces bounds, "
+                "hard clipping will be skipped."
             )
         if self.optimizer == "polyak":
             if self.polyak_beta <= 0:
@@ -151,7 +158,7 @@ class TrainingResult:
         result = {}
         for param_dict in self.trainable_params:
             for name, value in param_dict.items():
-                clean_name = name.replace("AdEx_", "")
+                clean_name = _param_key_to_bounds_key(name)
                 result[clean_name] = float(value.flatten()[0])
         return result
 
@@ -191,7 +198,7 @@ def setup_trainable_cell(
     if trainable_params is None:
         trainable_params = config.trainable_params
     if trainable_params is None:
-        trainable_params = ["g_L", "E_L", "v_T", "v_reset", "tau_w", "a", "b"]
+        trainable_params = ["C_m", "g_L", "E_L", "v_T", "v_reset", "tau_w", "a", "b"]
 
     # Calculate geometry from capacitance
     radius_um, length_um = geometry_for_capacitance(initial_params["C_m"])
@@ -210,7 +217,6 @@ def setup_trainable_cell(
 
     # Set initial parameter values
     cell.set("capacitance", initial_params["C_m"])
-    cell.set("AdEx_C_m", initial_params["C_m"])
     cell.set("AdEx_g_L", initial_params["g_L"])
     cell.set("AdEx_E_L", initial_params["E_L"])
     cell.set("AdEx_v_T", initial_params["v_T"])
@@ -231,7 +237,10 @@ def setup_trainable_cell(
 
     # Make specified parameters trainable
     for param_name in trainable_params:
-        cell.make_trainable(f"AdEx_{param_name}")
+        if param_name == "C_m":
+            cell.make_trainable("capacitance")
+        else:
+            cell.make_trainable(f"AdEx_{param_name}")
 
     # Setup data stimulation
     data_stimuli = cell.comp(0).data_stimulate(current_trace_nA, None)
@@ -285,13 +294,24 @@ def _create_optimizer(config: TrainingConfig):
     return optimizer
 
 
+def _param_key_to_bounds_key(name: str) -> str:
+    """Map a Jaxley parameter key to the corresponding PARAM_BOUNDS key.
+
+    Strips the ``AdEx_`` prefix and maps ``capacitance`` → ``C_m``.
+    """
+    key = name.replace("AdEx_", "")
+    if key == "capacitance":
+        key = "C_m"
+    return key
+
+
 def _clip_trainable_params(params: list[dict], bounds: dict) -> list[dict]:
     """Clip trainable parameters to bounds."""
     clipped = []
     for param_dict in params:
         clipped_dict = {}
         for name, value in param_dict.items():
-            bounds_key = name.replace("AdEx_", "")
+            bounds_key = _param_key_to_bounds_key(name)
             if bounds_key in bounds:
                 bound = bounds[bounds_key]
                 clipped_dict[name] = jnp.clip(value, bound.min, bound.max)
@@ -299,6 +319,53 @@ def _clip_trainable_params(params: list[dict], bounds: dict) -> list[dict]:
                 clipped_dict[name] = value
         clipped.append(clipped_dict)
     return clipped
+
+
+def _build_param_transform(params: list[dict], bounds: dict):
+    """Build a ``ParamTransform`` mapping each trainable parameter through a sigmoid.
+
+    Imports ``SigmoidTransform`` and ``ParamTransform`` lazily so the Jaxley
+    transforms module is only required when this feature is actually used.
+    """
+    from jaxley.optimize.transforms import ParamTransform, SigmoidTransform
+
+    tf_list: list[dict] = []
+    for param_dict in params:
+        tf_dict = {}
+        for name in param_dict:
+            bounds_key = _param_key_to_bounds_key(name)
+            if bounds_key not in bounds:
+                raise ValueError(
+                    f"No bounds for parameter '{name}' (bounds key '{bounds_key}'). "
+                    "Cannot build sigmoid transform without bounds."
+                )
+            b = bounds[bounds_key]
+            tf_dict[name] = SigmoidTransform(b.min, b.max)
+        tf_list.append(tf_dict)
+    return ParamTransform(tf_list)
+
+
+def _nudge_from_bounds(params: list[dict], bounds: dict) -> list[dict]:
+    """Nudge parameters sitting at exact bounds inward by a tiny epsilon.
+
+    This prevents ``SigmoidTransform.inverse()`` from returning +/-Inf when
+    a parameter value exactly equals a bound.
+    """
+    nudged = []
+    for param_dict in params:
+        nudged_dict = {}
+        for name, value in param_dict.items():
+            bounds_key = _param_key_to_bounds_key(name)
+            if bounds_key in bounds:
+                # TODO: check if all parameters get nudged or only parameters within
+                #  bounds. And if all parameters get nudged, is that really bad?
+                b = bounds[bounds_key]
+                eps = 1e-4 * (b.max - b.min)
+                nudged_dict[name] = jnp.clip(value, b.min + eps, b.max - eps)
+            else:
+                nudged_dict[name] = value
+        nudged.append(nudged_dict)
+    return nudged
 
 
 def _compute_grad_norm(grads: list[dict]) -> float:
@@ -312,7 +379,7 @@ def _format_params(params: list[dict]) -> str:
     parts = []
     for d in params:
         for name, val in d.items():
-            clean = name.replace("AdEx_", "")
+            clean = _param_key_to_bounds_key(name)
             parts.append(f"{clean}={float(val.flatten()[0]):.4f}")
     return ", ".join(parts)
 
@@ -355,6 +422,16 @@ def train(
     if initial_params is None:
         initial_params = {}
 
+    # Sigmoid reparameterization: work in unconstrained space
+    param_transform = None
+    if config.use_param_transform:
+        param_transform = _build_param_transform(trainable_params, PARAM_BOUNDS)
+        trainable_params = _nudge_from_bounds(trainable_params, PARAM_BOUNDS)
+        trainable_params = param_transform.inverse(trainable_params)
+        # Wrap loss_fn so it maps unconstrained -> constrained before evaluation
+        _original_loss_fn = loss_fn
+        loss_fn = lambda p: _original_loss_fn(param_transform.forward(p))
+
     # Create optimizer
     optimizer = _create_optimizer(config)
     opt_state = optimizer.init(trainable_params)
@@ -390,6 +467,8 @@ def train(
             extras.append(f"clip={config.grad_clip_norm}")
         if config.lr_schedule is not None:
             extras.append(f"schedule={config.lr_schedule}")
+        if config.use_param_transform:
+            extras.append("sigmoid_transform")
         log.info(
             "Training: optimizer=%s lr=%s epochs=%d surrogate=%s slope=%.1f%s",
             config.optimizer,
@@ -431,8 +510,8 @@ def train(
             updates, opt_state = optimizer.update(grads, opt_state)
         trainable_params = optax.apply_updates(trainable_params, updates)
 
-        # Apply parameter bounds
-        if config.clip_to_bounds:
+        # Apply parameter bounds (skip when sigmoid transform handles it)
+        if config.clip_to_bounds and param_transform is None:
             trainable_params = _clip_trainable_params(trainable_params, PARAM_BOUNDS)
 
         t1 = time.time()
@@ -461,13 +540,18 @@ def train(
         # Periodic logging
         if epoch % config.print_every == 0:
             lr_str = f" | lr={lr_history[-1]:.2e}" if lr_history else ""
+            display_params = (
+                param_transform.forward(trainable_params)
+                if param_transform is not None
+                else trainable_params
+            )
             log.info(
                 "Epoch %4d | loss=%.6f | grad_norm=%.2e%s | %s",
                 epoch,
                 loss_val,
                 float(grad_norm),
                 lr_str,
-                _format_params(trainable_params),
+                _format_params(display_params),
             )
 
     if config.verbose and loss_history:
@@ -492,6 +576,10 @@ def train(
         if config.return_best and best_trainable_params is not None
         else trainable_params
     )
+
+    # Map back to constrained space when using sigmoid transform
+    if param_transform is not None:
+        output_params = param_transform.forward(output_params)
 
     return TrainingResult(
         trainable_params=output_params,
