@@ -68,12 +68,14 @@ Related questions that will also be studied in this project are:
 The following milestones need to be completed in order to answer the research question:
 
 \begin{itemize}
-    \item Implement AdEx model using a bio-physical neuron simulator that allows automatic differentiation.
-    \item Extend AdEx implementation to allow for surrogate gradients.
-    \item Design differentiable loss function that allows successful gradient based optimization.
-    \item Implement testing framework that allows optimization on multiple experimental traces.
-    \item Measure computational efficiency of optimization method
-    \item Compare gradient-based strategie against feature based state-of-the-art genetic / non-differentiable alternatives.
+    \item Implement AdEx model using a bio-physical neuron simulator that allows automatic differentiation (Prio: high, done).
+    \item Extend AdEx implementation to allow for surrogate gradients (Prio: high, done).
+    \item Design differentiable loss function that allows successful gradient based optimization (Prio: high, done).
+    \item Implement testing framework that allows optimization on artificial experimental trace (Prio: high, todo).
+    \item Implement testing framework that allows optimization on single experimental trace (Prio: high, done).
+    \item Implement testing framework that allows optimization on multiple experimental traces (Prio: medium, todo).
+    \item Compare gradient-based strategy against feature based state-of-the-art genetic / non-differentiable alternatives (Prio: high --- main thesis goal, todo).
+    \item Measure computational efficiency of optimization method (Prio: low, todo)
 \end{itemize}
 
 \subsection{Tasks}
@@ -106,9 +108,9 @@ This cross-validation approach ensures implementation correctness before proceed
   \item Loss Function Development\\
 Three loss function approaches will be investigated:
 \begin{itemize}
-  \item MSE-based and absolute-error-based loss on raw voltage traces (baseline)
-  \item Feature-based loss adapted from Guarino et al. [9], capturing spike timing, interspike intervals, firing rate, and subthreshold behavior
-  \item Test (smooth) dynamic time warping as loss function alternative.
+  \item Feature-based loss adapted from Guarino et al. [9], capturing spike timing, interspike intervals, firing rate, and subthreshold behavior (some version of this used by Deistler)
+  \item Test (soft) dynamic time warping as loss function alternative (used by Deistler for fine-tuning).
+  \item Van Rossum distance, interesting because of it's differentiable nature
 \end{itemize}
 The feature-based approach requires developing differentiable approximations of discrete spike detection operations using soft thresholds and weighted averages.
 This is necessary because gradient-based optimization requires end-to-end differentiability.
@@ -145,7 +147,9 @@ The following are explicitly out of scope for this project:
     \item \textbf{All neuron types:} Evaluation will focus on striatal projection neurons. Comprehensive validation across diverse neuron types (cortical, cerebellar, etc.) is limited by available data and time.
     \item \textbf{Hyperparameter optimization:} While some hyperparameter exploration will be conducted, exhaustive optimization of surrogate gradient parameters, learning rates, and loss function weights is not the primary focus.
     \item \textbf{Real-time or embedded applications:} The implementation targets research use in Python/JAX, not deployment in real-time systems.
-    \item \textbf{Comparison with existing methods:} Only selected baseline methods (Nelder-mead, grid search) will be compared. Comprehensive benchmarking against all published optimization approaches is not feasible.
+    \item \textbf{Comparison with existing methods:} Only selected baseline methods (Nelder-mead, grid search) will be compared. 
+      Comprehensive benchmarking against all published optimization approaches is not feasible.
+      BluePyOpt for GA might be interesting if there is time.
     \item \textbf{Theoretical analysis:} The focus is empirical. Formal convergence proofs or theoretical analysis of surrogate gradient approximation quality are not included.
 \end{enumerate}
 
