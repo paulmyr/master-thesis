@@ -8,7 +8,6 @@ Uses the new modular structure from core/, plotting/.
 """
 
 import matplotlib.pyplot as plt
-
 from core import NAUD_PARAMETERS, simulate_brian2, simulate_jaxley
 from plotting import plot_combined_comparison, plot_comparison
 
@@ -142,9 +141,8 @@ def verify_surrogate_gradients():
     import jax
     import jax.numpy as jnp
     import jaxley as jx
-    from jaxley.channels import AdEx, AdExSurrogate
-
     from core.simulation import geometry_for_capacitance
+    from jaxley.channels import AdEx, AdExSurrogate
 
     params = NAUD_PARAMETERS["tonic"]
 

@@ -16,7 +16,6 @@ import numpy as np
 import optax
 from jax import config
 from jaxley.channels import AdExSurrogate
-
 from loss import (GuarinoFeatureExtractor, GuarinoLossConfig,
                   extract_experimental_features, guarino_loss)
 

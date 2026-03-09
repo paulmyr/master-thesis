@@ -22,11 +22,11 @@ import jax.numpy as jnp
 import jaxley as jx
 import matplotlib.pyplot as plt
 import numpy as np
-from jaxley.channels import AdExSurrogate
-
 from core import geometry_for_capacitance
 from evaluation import (CoincidenceResult, coincidence_factor,
                         coincidence_factor_from_traces, detect_spike_times)
+from jaxley.channels import AdExSurrogate
+
 from train_adex_guarino import (extract_experimental_features,
                                 find_stim_window, load_data)
 
