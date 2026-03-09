@@ -151,10 +151,11 @@ class TestCropToStimWindow:
             stim_current_pA=500.0,
         )
 
-    def test_correct_boundaries(self, full_trace):
+    def test_correct_boundaries_no_padding(self, full_trace):
         cropped = crop_to_stim_window(full_trace)
         assert cropped.stim_start_idx == 0
-        assert cropped.n_samples == 1200  # 1600 - 400
+        assert cropped.stim_end_idx == 1200  # 1600 - 400
+        assert cropped.n_samples == 1200
 
     def test_time_reset_to_zero(self, full_trace):
         cropped = crop_to_stim_window(full_trace)
@@ -165,10 +166,50 @@ class TestCropToStimWindow:
         # 50 ms / 0.1 ms = 500 samples
         assert cropped.n_samples == 500
 
-    def test_padding(self, full_trace):
-        cropped = crop_to_stim_window(full_trace, padding_ms=10.0)
-        # padding = 10ms / 0.1ms = 100 extra samples
+    def test_max_duration_with_padding(self, full_trace):
+        # max_duration caps the STIM window, padding is added ON TOP
+        cropped = crop_to_stim_window(
+            full_trace,
+            max_duration_ms=50.0,
+            padding_ms_before=10.0,
+            padding_ms_after=10.0,
+        )
+        # stim: 500 samples (50ms), before: 100 (10ms), after: 100 (10ms)
+        # total = 100 + 500 + 100 = 700
+        assert cropped.n_samples == 700
+        assert cropped.stim_start_idx == 100
+        assert cropped.stim_end_idx == 600
+
+    def test_padding_after(self, full_trace):
+        cropped = crop_to_stim_window(full_trace, padding_ms_after=10.0)
+        # padding_after = 10ms / 0.1ms = 100 extra samples after stim
         assert cropped.n_samples == 1300  # 1200 + 100
+        assert cropped.stim_start_idx == 0
+        assert cropped.stim_end_idx == 1200
+
+    def test_padding_before(self, full_trace):
+        cropped = crop_to_stim_window(full_trace, padding_ms_before=10.0)
+        # padding_before = 10ms / 0.1ms = 100 extra samples before stim
+        assert cropped.n_samples == 1300  # 100 + 1200
+        assert cropped.stim_start_idx == 100
+        assert cropped.stim_end_idx == 1300
+
+    def test_padding_both(self, full_trace):
+        cropped = crop_to_stim_window(
+            full_trace, padding_ms_before=10.0, padding_ms_after=10.0
+        )
+        # 100 before + 1200 stim + 100 after = 1400
+        assert cropped.n_samples == 1400
+        assert cropped.stim_start_idx == 100
+        assert cropped.stim_end_idx == 1300
+
+    def test_padding_before_clamps_to_zero(self, full_trace):
+        # Request more pre-padding than available (stim starts at idx 400 = 40 ms)
+        cropped = crop_to_stim_window(full_trace, padding_ms_before=100.0)
+        # Can only go back 400 samples, not 1000
+        assert cropped.time[0] == pytest.approx(0.0)
+        assert cropped.stim_start_idx == 400  # all 400 pre-stim samples included
+        assert cropped.n_samples == 1600  # 400 + 1200
 
     def test_spike_time_recalculation(self, full_trace):
         cropped = crop_to_stim_window(full_trace)
@@ -176,3 +217,10 @@ class TestCropToStimWindow:
         # Recalculated: 50 - 40 = 10 ms, 80 - 40 = 40 ms
         assert len(cropped.spike_times) == 2
         np.testing.assert_allclose(cropped.spike_times, [10.0, 40.0], atol=0.2)
+
+    def test_spike_times_with_padding_before(self, full_trace):
+        cropped = crop_to_stim_window(full_trace, padding_ms_before=10.0)
+        # crop_start = 400 - 100 = 300, time origin = 300*0.1 = 30 ms
+        # Spikes at 50 and 80 ms -> 50-30=20, 80-30=50
+        assert len(cropped.spike_times) == 2
+        np.testing.assert_allclose(cropped.spike_times, [20.0, 50.0], atol=0.2)

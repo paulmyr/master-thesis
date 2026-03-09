@@ -110,6 +110,9 @@ class ParamBounds:
     min: float
     max: float
 
+    # TODO: think if this data class should do more work, e.g. is sigmoid inverse
+    #  transformation reponsibility of this class?
+
     def clip(self, value: float) -> float:
         """Clip value to bounds."""
         return max(self.min, min(self.max, value))
@@ -120,16 +123,17 @@ class ParamBounds:
 
 
 PARAM_BOUNDS: dict[str, ParamBounds] = {
-    "C_m": ParamBounds(50.0, 500.0),
-    "g_L": ParamBounds(1.0, 20.0),
-    "E_L": ParamBounds(-90.0, -50.0),
-    "v_T": ParamBounds(-60.0, -35.0),
-    "delta_T": ParamBounds(0.5, 5.0),
-    "v_reset": ParamBounds(-65.0, -40.0),
-    "v_threshold": ParamBounds(0.0, 35.0),
-    "tau_w": ParamBounds(10.0, 500.0),
-    "a": ParamBounds(-20, 20.0),
-    "b": ParamBounds(0.0, 200.0),
+    "C_m": ParamBounds(180.0, 220.0),
+    "capacitance": ParamBounds(180.0, 220.0),  # alias for C_m (Jaxley compartment param)
+    "g_L": ParamBounds(9.0, 13.0),
+    "E_L": ParamBounds(-75.0, -68.0),
+    "v_T": ParamBounds(-60.0, -30.0),
+    "delta_T": ParamBounds(2, 20.0),
+    "v_reset": ParamBounds(-60.0, -45.0),
+    "v_threshold": ParamBounds(-20.0, 30.0),
+    "tau_w": ParamBounds(20.0, 320.0),
+    "a": ParamBounds(-10.0, 3.0),
+    "b": ParamBounds(0.0, 65.0),
 }
 
 
@@ -187,6 +191,8 @@ def convert_trainable_to_params(trainable_params: list[dict]) -> dict:
         for name, value in param_dict.items():
             # Strip AdEx_ prefix
             clean_name = name.replace("AdEx_", "")
+            if clean_name == "capacitance":
+                clean_name = "C_m"
             # Extract scalar value
             result[clean_name] = float(value.flatten()[0])
     return result

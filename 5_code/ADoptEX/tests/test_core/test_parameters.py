@@ -107,6 +107,24 @@ class TestFormatConversion:
 # =========================================================================
 
 
+class TestCapacitanceAlias:
+    def test_capacitance_bounds_match_c_m(self):
+        assert PARAM_BOUNDS["capacitance"].min == PARAM_BOUNDS["C_m"].min
+        assert PARAM_BOUNDS["capacitance"].max == PARAM_BOUNDS["C_m"].max
+
+    def test_convert_trainable_maps_capacitance_to_c_m(self):
+        trainable = [{"capacitance": jnp.array([200.0])}]
+        result = convert_trainable_to_params(trainable)
+        assert "C_m" in result
+        assert "capacitance" not in result
+        assert result["C_m"] == pytest.approx(200.0)
+
+    def test_clip_params_handles_capacitance_key(self):
+        params = {"capacitance": 999.0}
+        clipped = clip_params(params)
+        assert clipped["capacitance"] == PARAM_BOUNDS["capacitance"].max
+
+
 class TestConstants:
     def test_naud_parameters_have_required_keys(self):
         required = {"C_m", "g_L", "E_L", "v_T", "delta_T", "v_reset", "tau_w", "a", "b"}

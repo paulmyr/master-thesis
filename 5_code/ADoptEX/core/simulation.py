@@ -151,7 +151,6 @@ def create_adex_cell(
 
     # Set all AdEx parameters
     cell.set("capacitance", params["C_m"])
-    cell.set(f"{prefix}_C_m", params["C_m"])
     cell.set(f"{prefix}_g_L", params["g_L"])
     cell.set(f"{prefix}_E_L", params["E_L"])
     cell.set(f"{prefix}_v_T", params["v_T"])
@@ -174,10 +173,22 @@ def create_adex_cell(
     # Setup trainable parameters
     if trainable:
         if trainable_params is None:
-            trainable_params = ["g_L", "E_L", "v_T", "v_reset", "tau_w", "a", "b"]
+            trainable_params = [
+                "C_m",
+                "g_L",
+                "E_L",
+                "v_T",
+                "v_reset",
+                "tau_w",
+                "a",
+                "b",
+            ]
 
         for param_name in trainable_params:
-            cell.make_trainable(f"{prefix}_{param_name}")
+            if param_name == "C_m":
+                cell.make_trainable("capacitance")
+            else:
+                cell.make_trainable(f"{prefix}_{param_name}")
 
     return cell
 

@@ -141,8 +141,8 @@ def find_stim_window(
 def load_trace(
     voltage_path: str | Path,
     current_path: str | Path,
-    junction_potential_mv: float = 0.0,
-    spike_threshold_mv: float = -20.0,
+    junction_potential_mv: float = 35.0,
+    spike_threshold_mv: float = 0.0,
     stim_threshold_pA: float = 100.0,
 ) -> TraceData:
     """
@@ -243,49 +243,84 @@ def load_multiple_traces(
     return traces
 
 
+def store_trace(
+    data: TraceData,
+    voltage_path: str | Path,
+    current_path: str | Path
+) -> None:
+
+    v_data = np.array([data.time, data.voltage])
+    c_data = np.array([data.time, data.current])
+    np.savetxt(voltage_path, v_data)
+    np.savetxt(current_path, c_data)
+
+
 def crop_to_stim_window(
     data: TraceData,
     max_duration_ms: float | None = None,
-    padding_ms: float = 0.0,
+    padding_ms_before: float = 0.0,
+    padding_ms_after: float = 0.0,
 ) -> TraceData:
     """
-    Crop trace data to the stimulation window.
+    Crop trace data to the stimulation window with optional pre/post padding.
 
     Useful for reducing data size and focusing on the relevant period.
+    The returned trace contains a pre-stimulus window, stimulus window,
+    and post-stimulus window.
+
+    Processing order:
+        1. ``max_duration_ms`` caps the **stimulation window** (stim_start to stim_end).
+        2. ``padding_ms_before/after`` extends **beyond** the (possibly capped) stim window.
+
+    The total trace length is therefore up to
+    ``padding_before + min(stim_duration, max_duration) + padding_after``.
 
     Args:
         data: Original TraceData
-        max_duration_ms: Maximum duration to keep (from stim start). If None, keeps all.
-        padding_ms: Extra time to include after stimulation ends
+        max_duration_ms: Maximum stimulation duration to keep (from stim start).
+            Only shortens the stim window; padding is added on top. If None, keeps
+            the full stimulation window.
+        padding_ms_before: Extra time to include before stimulation starts (pre-stim window)
+        padding_ms_after: Extra time to include after stimulation ends (post-stim window)
 
     Returns:
-        New TraceData cropped to the stimulation window
+        New TraceData cropped to [stim_start - padding_before, stim_end + padding_after]
 
     Example:
-        >>> cropped = crop_to_stim_window(data, max_duration_ms=500.0)
+        >>> cropped = crop_to_stim_window(data, padding_ms_before=100.0, padding_ms_after=50.0)
     """
-    start_idx = data.stim_start_idx
-    end_idx = data.stim_end_idx
+    stim_start = data.stim_start_idx
+    stim_end = data.stim_end_idx
 
-    # Apply max duration limit
+    # Apply max duration limit to stim end
     if max_duration_ms is not None:
         max_samples = int(max_duration_ms / data.dt_ms)
-        end_idx = min(end_idx, start_idx + max_samples)
+        stim_end = min(stim_end, stim_start + max_samples)
 
-    # Add padding
-    if padding_ms > 0:
-        padding_samples = int(padding_ms / data.dt_ms)
-        end_idx = min(end_idx + padding_samples, len(data.time))
+    # Compute crop boundaries with padding
+    pad_before_samples = (
+        int(padding_ms_before / data.dt_ms) if padding_ms_before > 0 else 0
+    )
+    pad_after_samples = (
+        int(padding_ms_after / data.dt_ms) if padding_ms_after > 0 else 0
+    )
+
+    crop_start = max(stim_start - pad_before_samples, 0)
+    crop_end = min(stim_end + pad_after_samples, len(data.time))
 
     # Crop arrays
-    time = data.time[start_idx:end_idx] - data.time[start_idx]  # Reset time to 0
-    voltage = data.voltage[start_idx:end_idx]
-    current = data.current[start_idx:end_idx]
+    time = data.time[crop_start:crop_end] - data.time[crop_start]  # Reset time to 0
+    voltage = data.voltage[crop_start:crop_end]
+    current = data.current[crop_start:crop_end]
 
     # Recalculate spike times relative to new time origin
-    spike_times = data.spike_times - data.time[start_idx]
+    spike_times = data.spike_times - data.time[crop_start]
     # Keep only spikes within the new window
     spike_times = spike_times[(spike_times >= 0) & (spike_times < time[-1])]
+
+    # Stim indices relative to the cropped window
+    new_stim_start = stim_start - crop_start
+    new_stim_end = stim_end - crop_start
 
     return TraceData(
         time=time,
@@ -293,7 +328,7 @@ def crop_to_stim_window(
         current=current,
         dt_ms=data.dt_ms,
         spike_times=spike_times,
-        stim_start_idx=0,
-        stim_end_idx=end_idx - start_idx,
+        stim_start_idx=new_stim_start,
+        stim_end_idx=new_stim_end,
         stim_current_pA=data.stim_current_pA,
     )
