@@ -93,7 +93,8 @@ def trace_stim_window_plot(
     trace: TraceData,
     padding_ms: float = 50.0,
     show_spikes: bool = True,
-    figsize: tuple[float, float] = (10, 4),
+    show_current: bool = True,
+    figsize: tuple[float, float] = (10, 5),
 ) -> Figure:
     """Plot only the stimulation window of a trace (zoomed in).
 
@@ -101,27 +102,39 @@ def trace_stim_window_plot(
         trace: TraceData to visualize
         padding_ms: Extra time before/after stim window to show
         show_spikes: Mark detected spike times
+        show_current: Show current injection as a second subplot
         figsize: Figure size
 
     Returns:
         Matplotlib Figure
     """
-    fig, ax = plt.subplots(figsize=figsize)
+    n_rows = 2 if show_current else 1
+    fig, axes = plt.subplots(n_rows, 1, figsize=figsize, sharex=True, squeeze=False)
+    ax_v = axes[0, 0]
 
     t_start = trace.time[trace.stim_start_idx] - padding_ms
     t_end = trace.time[min(trace.stim_end_idx, len(trace.time) - 1)] + padding_ms
 
-    ax.plot(trace.time, trace.voltage, color="k", linewidth=0.6)
-    ax.set_xlim(t_start, t_end)
-    ax.set_xlabel("Time (ms)")
-    ax.set_ylabel("Voltage (mV)")
+    ax_v.plot(trace.time, trace.voltage, color="k", linewidth=0.6)
+    ax_v.set_xlim(t_start, t_end)
+    ax_v.set_ylabel("Voltage (mV)")
 
     if show_spikes and len(trace.spike_times) > 0:
         for st in trace.spike_times:
             if t_start <= st <= t_end:
-                ax.axvline(st, color="r", linestyle=":", alpha=0.5, linewidth=0.7)
+                ax_v.axvline(st, color="r", linestyle=":", alpha=0.5, linewidth=0.7)
 
-    ax.grid(True, alpha=0.2)
+    ax_v.grid(True, alpha=0.2)
+
+    if show_current:
+        ax_i = axes[1, 0]
+        ax_i.plot(trace.time, trace.current, color="tab:blue", linewidth=0.6)
+        ax_i.set_ylabel("Current (pA)")
+        ax_i.set_xlabel("Time (ms)")
+        ax_i.grid(True, alpha=0.2)
+    else:
+        ax_v.set_xlabel("Time (ms)")
+
     fig.suptitle(
         f"Stim window | {trace.n_spikes} spikes | "
         f"I={trace.stim_current_pA:.0f} pA | "
@@ -129,6 +142,128 @@ def trace_stim_window_plot(
         fontsize=9,
     )
     fig.tight_layout()
+    return fig
+
+
+def alignment_diagnostic_plot(
+    data: TraceData,
+    stim_end_index: int | None = None,
+    figsize: tuple[float, float] = (14, 10),
+) -> Figure:
+    """Diagnostic plot to verify time alignment between data, stimuli, and loss functions.
+
+    Shows four panels:
+    1. Experimental voltage with stim window markers and pre/post padding regions
+    2. Current trace (what the simulation receives)
+    3. What the loss function sees (voltage[:stim_end_index + margin])
+    4. Spike times overlaid on voltage
+
+    Also prints a summary of all alignment-critical indices and time windows.
+
+    Args:
+        data: Cropped TraceData (from crop_to_stim_window with padding)
+        stim_end_index: The stim_end_index passed to the loss function factory.
+            If None, uses data.stim_end_idx.
+        figsize: Figure size
+
+    Returns:
+        Matplotlib Figure
+    """
+    if stim_end_index is None:
+        stim_end_index = data.stim_end_idx
+
+    time_ms = data.time
+    stim_start_ms = data.stim_start_idx * data.dt_ms
+    stim_end_ms = data.stim_end_idx * data.dt_ms
+
+    fig, axes = plt.subplots(4, 1, figsize=figsize, sharex=True)
+
+    # ── Panel 1: Voltage with stim markers ──
+    ax = axes[0]
+    ax.plot(time_ms, data.voltage, color="black", linewidth=0.6, label="data.voltage")
+    ax.axvline(stim_start_ms, color="green", ls="--", lw=1.5,
+               label=f"stim_start_idx={data.stim_start_idx}")
+    ax.axvline(stim_end_ms, color="red", ls="--", lw=1.5,
+               label=f"stim_end_idx={data.stim_end_idx}")
+    if data.stim_start_idx > 0:
+        ax.axvspan(time_ms[0], stim_start_ms, alpha=0.1, color="blue",
+                   label="pre-stim padding")
+    post_stim_samples = data.n_samples - data.stim_end_idx
+    if post_stim_samples > 0:
+        ax.axvspan(stim_end_ms, time_ms[-1], alpha=0.1, color="orange",
+                   label="post-stim padding")
+    ax.set_ylabel("Voltage (mV)")
+    ax.set_title("Cropped data with stim window markers")
+    ax.legend(fontsize=7, loc="upper right")
+    ax.grid(True, alpha=0.2)
+
+    # ── Panel 2: Current trace ──
+    ax = axes[1]
+    ax.plot(time_ms, data.current, color="C1", linewidth=0.8, label="data.current (pA)")
+    ax.axvline(stim_start_ms, color="green", ls="--", lw=1.5)
+    ax.axvline(stim_end_ms, color="red", ls="--", lw=1.5)
+    ax.set_ylabel("Current (pA)")
+    ax.set_title("Stimulus current fed to simulation & training")
+    ax.legend(fontsize=7, loc="upper right")
+    ax.grid(True, alpha=0.2)
+
+    # ── Panel 3: Loss function view ──
+    ax = axes[2]
+    loss_margin = 100  # loss functions typically use stim_end_index + 100
+    loss_end = min(stim_end_index + loss_margin, len(data.voltage))
+    ax.plot(time_ms, data.voltage, color="black", linewidth=0.5, alpha=0.25,
+            label="full data.voltage")
+    ax.plot(time_ms[:loss_end], data.voltage[:loss_end], color="C0", linewidth=0.8,
+            label=f"loss view [:stim_end+100] = [:{loss_end}]")
+    ax.axvline(stim_end_index * data.dt_ms, color="red", ls="--", lw=1.5,
+               label=f"stim_end_index={stim_end_index}")
+    if data.stim_start_idx > 0:
+        ax.axvspan(time_ms[0], stim_start_ms, alpha=0.15, color="yellow",
+                   label=f"pre-stim in loss: [0, {data.stim_start_idx})")
+    ax.set_ylabel("Voltage (mV)")
+    ax.set_title("What the loss function sees (voltage[:stim_end_index + 100])")
+    ax.legend(fontsize=7, loc="upper right")
+    ax.grid(True, alpha=0.2)
+
+    # ── Panel 4: Spike times ──
+    ax = axes[3]
+    ax.plot(time_ms, data.voltage, color="black", linewidth=0.6)
+    for i, st in enumerate(data.spike_times):
+        ax.axvline(st, color="C2", alpha=0.6, lw=0.8,
+                   label="spike_times" if i == 0 else None)
+    ax.set_ylabel("Voltage (mV)")
+    ax.set_xlabel("Time (ms)")
+    ax.set_title(f"Spike times in cropped data ({len(data.spike_times)} spikes)")
+    ax.legend(fontsize=7, loc="upper right")
+    ax.grid(True, alpha=0.2)
+
+    fig.tight_layout()
+
+    # ── Print summary ──
+    pre_stim_ms = data.stim_start_idx * data.dt_ms
+    post_stim_ms = post_stim_samples * data.dt_ms
+    print("=" * 60)
+    print("ALIGNMENT SUMMARY")
+    print("=" * 60)
+    print(f"data.n_samples        = {data.n_samples}")
+    print(f"data.dt_ms            = {data.dt_ms}")
+    print(f"data.duration_ms      = {data.duration_ms:.1f}")
+    print(f"data.stim_start_idx   = {data.stim_start_idx}  ({pre_stim_ms:.1f} ms)")
+    print(f"data.stim_end_idx     = {data.stim_end_idx}  ({stim_end_ms:.1f} ms)")
+    print(f"data.stim_duration_ms = {data.stim_duration_ms:.1f}")
+    print(f"data.stim_current_pA  = {data.stim_current_pA:.1f}")
+    print(f"stim_end_index (loss) = {stim_end_index}")
+    print(f"loss sees voltage[:{loss_end}]  ({loss_end * data.dt_ms:.1f} ms)")
+    print()
+    print(f"Pre-stim:   [{0}, {data.stim_start_idx})  = {pre_stim_ms:.1f} ms")
+    print(f"Stim:       [{data.stim_start_idx}, {data.stim_end_idx})  = {data.stim_duration_ms:.1f} ms")
+    print(f"Post-stim:  [{data.stim_end_idx}, {data.n_samples})  = {post_stim_ms:.1f} ms")
+    if data.stim_start_idx > 0:
+        print()
+        print(f"Note: Pre-stim padding ({pre_stim_ms:.0f} ms) is included in both")
+        print(f"  simulation and target. Loss functions compare from t=0,")
+        print(f"  so spike times include the pre-stim offset in both sim and exp.")
+
     return fig
 
 
@@ -573,7 +708,9 @@ def fit_before_after_plot(
     n_rows = 1 + n_trained + 1
     fig, axes = plt.subplots(n_rows, 1, figsize=figsize, sharex=True)
 
-    n = min(len(trace.time), len(sim_initial.time), *(len(s.time) for s in trained_sims))
+    n = min(
+        len(trace.time), len(sim_initial.time), *(len(s.time) for s in trained_sims)
+    )
     time = trace.time[:n]
 
     # Row 1: Before
