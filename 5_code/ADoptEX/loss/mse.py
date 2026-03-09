@@ -30,6 +30,12 @@ class MSELossConfig:
     # focusing the loss on subthreshold dynamics only.
     clamp_threshold: Optional[float] = None
 
+    # Inject artificial spike peaks at this voltage (mV) before computing MSE.
+    # When set, the soft spike trace from surrogate gradients is used to replace
+    # voltage at spike times with a visible peak, making spiking vs non-spiking
+    # distinguishable in the loss. Requires results[2] (spikes) from jx.integrate.
+    spike_peak_mv: Optional[float] = None
+
 
 def mse_loss(
     sim_voltage: Array, exp_voltage: Array, config: Optional[MSELossConfig] = None
@@ -112,9 +118,18 @@ def make_mse_loss_fn(
         # results[0] = voltage, results[1] = w, results[2] = spikes
         voltage = results[0].flatten()
 
-        # Truncate to stimulus window
-        min_len = min(len(voltage), stim_end_index + 100)
-        voltage = voltage[:min_len]
+        # Inject spike peaks if configured
+        if loss_config.spike_peak_mv is not None:
+            from ADoptEX.loss import inject_spike_peaks
+
+            spikes = results[2].flatten()
+            min_len = min(len(voltage), len(spikes), stim_end_index + 100)
+            voltage = voltage[:min_len]
+            spikes = spikes[:min_len]
+            voltage = inject_spike_peaks(voltage, spikes, loss_config.spike_peak_mv)
+        else:
+            min_len = min(len(voltage), stim_end_index + 100)
+            voltage = voltage[:min_len]
 
         # Compute MSE loss
         loss = mse_loss(voltage, exp_voltage[:min_len], loss_config)

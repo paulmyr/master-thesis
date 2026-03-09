@@ -46,6 +46,7 @@ class SoftDTWLossConfig:
     weight_mae: float = 0.5
     normalize: bool = True
     max_length: int | None = 2000
+    spike_peak_mv: float | None = None
 
 
 # =========================================================================
@@ -376,9 +377,18 @@ def make_soft_dtw_loss_fn(
         # Extract voltage trace
         voltage = results[0].flatten()
 
-        # Truncate to stimulus window (+ small buffer)
-        min_len = min(len(voltage), stim_end_index + 100)
-        voltage = voltage[:min_len]
+        # Inject spike peaks if configured
+        if loss_config.spike_peak_mv is not None:
+            from ADoptEX.loss import inject_spike_peaks
+
+            spikes = results[2].flatten()
+            min_len = min(len(voltage), len(spikes), stim_end_index + 100)
+            voltage = voltage[:min_len]
+            spikes = spikes[:min_len]
+            voltage = inject_spike_peaks(voltage, spikes, loss_config.spike_peak_mv)
+        else:
+            min_len = min(len(voltage), stim_end_index + 100)
+            voltage = voltage[:min_len]
 
         # Compute combined loss
         loss = soft_dtw_mae_loss(voltage, exp_voltage[:min_len], loss_config)

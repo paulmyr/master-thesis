@@ -5,6 +5,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
+from ADoptEX.loss import inject_spike_peaks
 from ADoptEX.loss.dtw import (SoftDTWLossConfig, _downsample, mae_loss,
                               soft_dtw, soft_dtw_mae_loss)
 
@@ -152,3 +153,30 @@ class TestSoftDTWMAELoss:
         l_norm = float(soft_dtw_mae_loss(a, b, cfg_norm))
         l_raw = float(soft_dtw_mae_loss(a, b, cfg_raw))
         assert l_norm != pytest.approx(l_raw, abs=1e-3)
+
+
+# =========================================================================
+# Soft-DTW with spike_peak_mv config
+# =========================================================================
+
+
+class TestSoftDTWWithSpikePeaks:
+    def test_spike_peak_changes_loss(self):
+        """spike_peak_mv should change the DTW+MAE loss value."""
+        sim_voltage = jnp.array([-70.0, -60.0, -55.0, -55.0, -65.0])
+        sim_spikes = jnp.array([0.0, 0.0, 1.0, 0.0, 0.0])
+        exp_voltage = jnp.array([-70.0, -60.0, 35.0, -55.0, -65.0])
+
+        cfg = SoftDTWLossConfig(max_length=None)
+
+        loss_without = float(soft_dtw_mae_loss(sim_voltage, exp_voltage, cfg))
+
+        sim_with_peaks = inject_spike_peaks(sim_voltage, sim_spikes, v_peak_mv=35.0)
+        loss_with = float(soft_dtw_mae_loss(sim_with_peaks, exp_voltage, cfg))
+
+        assert loss_with < loss_without
+
+    def test_spike_peak_none_is_default(self):
+        """spike_peak_mv=None gives same config behavior as default."""
+        cfg = SoftDTWLossConfig(spike_peak_mv=None)
+        assert cfg.spike_peak_mv is None

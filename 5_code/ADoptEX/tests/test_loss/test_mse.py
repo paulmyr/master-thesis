@@ -4,6 +4,7 @@ import jax
 import jax.numpy as jnp
 import pytest
 
+from ADoptEX.loss import inject_spike_peaks
 from ADoptEX.loss.mse import MSELossConfig, mse_loss
 
 
@@ -116,3 +117,78 @@ class TestMSELoss:
         # Only index 2 differs: (-40 - -45)^2 = 25, mean = 25/3
         expected = 25.0 / 3.0
         assert float(mse_loss(sim, exp, cfg)) == pytest.approx(expected)
+
+
+# =========================================================================
+# inject_spike_peaks
+# =========================================================================
+
+
+class TestInjectSpikePeaks:
+    def test_no_spikes_unchanged(self):
+        """Zero spike trace leaves voltage unchanged."""
+        voltage = jnp.array([-70.0, -60.0, -55.0])
+        spikes = jnp.zeros(3)
+        result = inject_spike_peaks(voltage, spikes, v_peak_mv=35.0)
+        assert jnp.allclose(result, voltage)
+
+    def test_all_spikes_all_peak(self):
+        """All-ones spike trace replaces everything with v_peak."""
+        voltage = jnp.array([-70.0, -60.0, -55.0])
+        spikes = jnp.ones(3)
+        result = inject_spike_peaks(voltage, spikes, v_peak_mv=35.0)
+        assert jnp.allclose(result, jnp.full(3, 35.0))
+
+    def test_mixed(self):
+        """Known input → known output for mixed spikes."""
+        voltage = jnp.array([-70.0, -60.0, -55.0, -50.0])
+        spikes = jnp.array([0.0, 1.0, 0.0, 1.0])
+        result = inject_spike_peaks(voltage, spikes, v_peak_mv=35.0)
+        expected = jnp.array([-70.0, 35.0, -55.0, 35.0])
+        assert jnp.allclose(result, expected)
+
+    def test_differentiable(self):
+        """Gradient through inject_spike_peaks is finite."""
+        voltage = jnp.array([-70.0, -60.0, -55.0])
+
+        def fn(spikes):
+            return jnp.sum(inject_spike_peaks(voltage, spikes, v_peak_mv=35.0))
+
+        g = jax.grad(fn)(jnp.array([0.0, 0.5, 1.0]))
+        assert jnp.all(jnp.isfinite(g))
+
+    def test_soft_spike_interpolation(self):
+        """Soft spike value (0.5) gives midpoint between voltage and peak."""
+        voltage = jnp.array([-55.0])
+        spikes = jnp.array([0.5])
+        result = inject_spike_peaks(voltage, spikes, v_peak_mv=35.0)
+        # 0.5 * 35 + 0.5 * (-55) = 17.5 - 27.5 = -10.0
+        assert float(result[0]) == pytest.approx(-10.0)
+
+
+# =========================================================================
+# MSE with spike_peak_mv config
+# =========================================================================
+
+
+class TestMSEWithSpikePeaks:
+    def test_spike_peak_changes_loss(self):
+        """spike_peak_mv=35 should produce different MSE than without."""
+        # Simulate: model resets to -55, experiment has peak at +35
+        sim_voltage = jnp.array([-70.0, -60.0, -55.0, -55.0, -65.0])
+        sim_spikes = jnp.array([0.0, 0.0, 1.0, 0.0, 0.0])
+        exp_voltage = jnp.array([-70.0, -60.0, 35.0, -55.0, -65.0])
+
+        # Without spike peaks: MSE sees -55 vs 35 at index 2
+        loss_without = float(mse_loss(sim_voltage, exp_voltage))
+
+        # With spike peaks: inject 35 at spike → MSE sees 35 vs 35 at index 2
+        sim_with_peaks = inject_spike_peaks(sim_voltage, sim_spikes, v_peak_mv=35.0)
+        loss_with = float(mse_loss(sim_with_peaks, exp_voltage))
+
+        assert loss_with < loss_without
+
+    def test_spike_peak_none_is_default(self):
+        """spike_peak_mv=None gives same config behavior as default."""
+        cfg = MSELossConfig(spike_peak_mv=None)
+        assert cfg.spike_peak_mv is None

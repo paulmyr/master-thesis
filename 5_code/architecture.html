@@ -222,13 +222,13 @@
     </tr>
     <tr>
       <td><strong>loss</strong></td>
-      <td><code>guarino.py</code><br><code>mse.py</code><br><code>dtw.py</code></td>
-      <td>Differentiable loss functions. Guarino: 8-feature extraction via soft spike detection. MSE: direct voltage comparison. Soft-DTW: differentiable dynamic time warping + MAE.</td>
+      <td><code>guarino.py</code><br><code>mse.py</code><br><code>dtw.py</code><br><code>van_rossum.py</code><br><code>deistler.py</code></td>
+      <td>Differentiable loss functions. Guarino: 8-feature extraction via soft spike detection. MSE: direct voltage comparison. Soft-DTW: differentiable dynamic time warping + MAE. Van Rossum: exponential kernel convolution on spike trains + L2 distance. Deistler: MAE on 4 standardized summary statistics (mean/std in pre-stimulus &amp; stimulus windows). Shared utility: <code>inject_spike_peaks()</code> for differentiable spike peak injection.</td>
     </tr>
     <tr>
       <td><strong>training</strong></td>
       <td><code>trainer.py</code></td>
-      <td>Unified training loop: cell setup with <code>make_trainable()</code>, optimizer creation (Adam/SGD/RMSProp/Polyak via optax) with optional gradient clipping, LR scheduling, and Polyak gradient normalization, gradient descent with parameter clipping.</td>
+      <td>Unified training loop: cell setup with <code>make_trainable()</code>, optimizer creation (Adam/SGD/RMSProp/Polyak via optax) with optional gradient clipping, LR scheduling, Polyak gradient normalization, and sigmoid reparameterization, gradient descent with parameter clipping or smooth bound enforcement.</td>
     </tr>
     <tr>
       <td><strong>evaluation</strong></td>
@@ -264,6 +264,8 @@
         <span class="file">guarino.py</span>             <span class="comment">Feature-based loss (soft spike features), GuarinoFeatures</span>
         <span class="file">mse.py</span>                 <span class="comment">MSE voltage loss, MSELossConfig</span>
         <span class="file">dtw.py</span>                 <span class="comment">Soft-DTW + MAE loss, SoftDTWLossConfig</span>
+        <span class="file">van_rossum.py</span>          <span class="comment">Van Rossum spike train distance, VanRossumLossConfig</span>
+        <span class="file">deistler.py</span>            <span class="comment">Summary statistics loss (Deistler et al. 2025), DeistlerLossConfig</span>
     <span class="dir">training/</span>
         <span class="file">__init__.py</span>
         <span class="file">trainer.py</span>             <span class="comment">TrainingConfig, TrainingResult, setup_trainable_cell(), train()</span>
@@ -271,7 +273,7 @@
         <span class="file">__init__.py</span>
         <span class="file">coincidence.py</span>         <span class="comment">CoincidenceResult, coincidence_factor() (&Gamma;)</span>
     <span class="file">plotting.py</span>                <span class="comment">Trace plots, training diagnostics, spike timing</span>
-    <span class="dir">tests/</span>                     <span class="comment">pytest suite (193 tests)</span>
+    <span class="dir">tests/</span>                     <span class="comment">pytest suite (275 tests)</span>
 <span class="dir">notebooks/</span>                     <span class="comment">Jupyter notebooks</span>
 </div>
 
@@ -482,8 +484,10 @@
   <div class="card">
     <div class="card-title">MSELossConfig <span class="badge">dataclass</span></div>
     <dl>
-      <dt>normalize</dt> <dd>bool &mdash; divide by variance</dd>
-      <dt>epsilon</dt>   <dd>float (1e-6)</dd>
+      <dt>normalize</dt>        <dd>bool &mdash; divide by variance</dd>
+      <dt>epsilon</dt>          <dd>float (1e-6)</dd>
+      <dt>clamp_threshold</dt>  <dd>float | None &mdash; clamp voltage above threshold (mV)</dd>
+      <dt>spike_peak_mv</dt>    <dd>float | None &mdash; inject spike peaks at this voltage before MSE</dd>
     </dl>
     <div class="sep"></div>
     <p style="font-size:0.82rem; color:var(--muted);">
@@ -499,7 +503,8 @@
       <dt>weight_dtw</dt>  <dd>float (1.0) &mdash; weight for DTW component</dd>
       <dt>weight_mae</dt>  <dd>float (0.5) &mdash; weight for MAE component</dd>
       <dt>normalize</dt>   <dd>bool (True) &mdash; length-normalize DTW distance</dd>
-      <dt>max_length</dt>  <dd>int | None (2000) &mdash; downsample long traces for O(T&sup2;) memory</dd>
+      <dt>max_length</dt>     <dd>int | None (2000) &mdash; downsample long traces for O(T&sup2;) memory</dd>
+      <dt>spike_peak_mv</dt> <dd>float | None &mdash; inject spike peaks at this voltage before DTW</dd>
     </dl>
     <div class="sep"></div>
     <p style="font-size:0.82rem; color:var(--muted);">
@@ -507,6 +512,38 @@
       <code>mae_loss(sim_v, exp_v)</code> &mdash; mean absolute error<br>
       <code>soft_dtw_mae_loss(sim_v, exp_v, config)</code> &mdash; weighted combination<br>
       <code>make_soft_dtw_loss_fn(cell, data_stimuli, ...)</code> &mdash; closure for training
+    </p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">VanRossumLossConfig <span class="badge">dataclass</span></div>
+    <dl>
+      <dt>tau_ms</dt>              <dd>float (10.0) &mdash; exponential kernel time constant (ms)</dd>
+      <dt>kernel_n_tau</dt>        <dd>float (5.0) &mdash; truncate kernel at n&middot;&tau;</dd>
+      <dt>weight_van_rossum</dt>   <dd>float (1.0) &mdash; weight for Van Rossum component</dd>
+      <dt>weight_subthreshold</dt> <dd>float (0.0) &mdash; optional subthreshold voltage MAE</dd>
+      <dt>subthreshold_clamp_mv</dt><dd>float (&minus;40.0) &mdash; clamp voltage for subthreshold MAE</dd>
+    </dl>
+    <div class="sep"></div>
+    <p style="font-size:0.82rem; color:var(--muted);">
+      <code>van_rossum_distance(sim_spikes, exp_spikes, dt_ms, config)</code> &mdash; L2 on kernel-filtered spike trains<br>
+      <code>spike_train_from_voltage(voltage, threshold_mv, dt_ms)</code> &mdash; rising-edge binary spike detector<br>
+      <code>make_van_rossum_loss_fn(cell, data_stimuli, ...)</code> &mdash; closure for training
+    </p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">DeistlerLossConfig <span class="badge">dataclass</span></div>
+    <dl>
+      <dt>mean_norm</dt>      <dd>float (8.0) &mdash; normalization divisor for mean statistics</dd>
+      <dt>std_norm</dt>       <dd>float (4.0) &mdash; normalization divisor for std statistics</dd>
+      <dt>epsilon</dt>        <dd>float (1e-6) &mdash; numerical stability for std</dd>
+      <dt>spike_peak_mv</dt>  <dd>float | None (None) &mdash; inject spike peaks using soft spike trace</dd>
+    </dl>
+    <div class="sep"></div>
+    <p style="font-size:0.82rem; color:var(--muted);">
+      <code>deistler_loss(sim_v, exp_v, stim_start, stim_end, config)</code> &mdash; MAE on 4 standardized summary statistics<br>
+      <code>make_deistler_loss_fn(cell, data_stimuli, ...)</code> &mdash; closure for training
     </p>
   </div>
 
@@ -531,6 +568,7 @@
       <dt>surrogate_type</dt>  <dd>str</dd>
       <dt>surrogate_slope</dt> <dd>float</dd>
       <dt>clip_to_bounds</dt>  <dd>bool</dd>
+      <dt>use_param_transform</dt><dd>bool (False) &mdash; sigmoid reparameterization via <code>SigmoidTransform</code>/<code>ParamTransform</code></dd>
       <dt>trainable_params</dt><dd>[str] | None</dd>
     </dl>
   </div>
@@ -571,7 +609,7 @@
       <li><code>setup_trainable_cell(params, current, dt)</code> &rarr; (cell, data_stimuli, t_max, params)<br>
         Creates cell with <code>make_trainable()</code> and <code>data_stimulate()</code></li>
       <li><code>train(loss_fn, params, config)</code> &rarr; TrainingResult<br>
-        Gradient descent loop with optional gradient clipping, LR scheduling, Polyak normalization, early stopping, parameter clipping, logging</li>
+        Gradient descent loop with optional gradient clipping, LR scheduling, Polyak normalization, sigmoid reparameterization, early stopping, parameter clipping, logging</li>
     </ul>
   </div>
 
@@ -610,14 +648,15 @@
     ├── make_*_loss_fn(cell, data_stimuli, ...)
     │     ├ guarino ──► make_guarino_loss_fn()   (soft features + relative error + penalties)
     │     ├ mse ──────► make_mse_loss_fn()       (direct voltage MSE)
-    │     └ soft_dtw ─► make_soft_dtw_loss_fn()  (differentiable DTW + MAE)
+    │     ├ soft_dtw ─► make_soft_dtw_loss_fn()  (differentiable DTW + MAE)
+    │     └ deistler ─► make_deistler_loss_fn() (summary stats MAE)
     │                                        ──►  loss_fn: params &rarr; scalar
     │
     ├── <strong>train(loss_fn, trainable_params, config)</strong>
     │     for epoch in range(n_epochs):
     │       loss, grads = jax.value_and_grad(loss_fn)(params)
     │       params = optax.apply_updates(params, optimizer.update(grads))
-    │       params = clip_to_bounds(params)
+    │       params = clip_to_bounds(params)  <span class="comment">or sigmoid transform</span>
     │                                        ──►  <strong>TrainingResult</strong>
     │
     ├── simulate_with_current_trace(final_params, current)
@@ -720,10 +759,10 @@ print(f"&Gamma; = {gamma.gamma:.3f}")</div>
     <li><strong>Notebook-first workflow</strong>: the library exposes importable building blocks (loss functions, training loop, data loading, evaluation). Orchestration, plotting, and experiment presets belong in notebooks.</li>
     <li><strong>ExperimentConfig</strong> is the single source of truth for all hyperparameters.</li>
     <li><strong>TraceData vs SimulationResult</strong>: TraceData holds raw experimental recordings (with stimulation window metadata); SimulationResult holds Jaxley/Brian2 output (voltage + adaptation current <em>w</em> + spike trace).</li>
-    <li><strong>Loss functions are closures</strong>: <code>make_guarino_loss_fn()</code>, <code>make_mse_loss_fn()</code>, and <code>make_soft_dtw_loss_fn()</code> capture the cell, data stimuli, and target data, returning a <code>params &rarr; scalar</code> function compatible with <code>jax.value_and_grad()</code>.</li>
+    <li><strong>Loss functions are closures</strong>: <code>make_guarino_loss_fn()</code>, <code>make_mse_loss_fn()</code>, <code>make_soft_dtw_loss_fn()</code>, and <code>make_deistler_loss_fn()</code> capture the cell, data stimuli, and target data, returning a <code>params &rarr; scalar</code> function compatible with <code>jax.value_and_grad()</code>.</li>
     <li><strong>TrainingResult</strong> stores params in Jaxley&rsquo;s internal format (<code>[{"AdEx_g_L": Array}]</code>); <code>get_params_dict()</code> converts to <code>{"g_L": float}</code>.</li>
     <li><strong>Soft feature extraction</strong> uses temperature-scaled power sharpening and sigmoid-gated cumulative sum masks to make discrete spike operations differentiable.</li>
-    <li><strong>Parameter clipping</strong> is applied after each gradient step using biophysically realistic bounds from <code>PARAM_BOUNDS</code>.</li>
+    <li><strong>Parameter clipping</strong> is applied after each gradient step using biophysically realistic bounds from <code>PARAM_BOUNDS</code>. Alternatively, <strong>sigmoid reparameterization</strong> (<code>use_param_transform=True</code>) maps parameters through a smooth bijection so the optimizer works in unconstrained space &mdash; gradients flow smoothly near boundaries.</li>
   </ul>
 </div>
 
