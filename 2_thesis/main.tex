@@ -702,6 +702,7 @@ These loss functions are commonly used for parameter fitting in simplified neuro
 However, by default, most of these features are not in itself differentiable.
 For existing methods that use non-gradient methods like Grid Search, Nelder-Mead or Genetic Algorithms, this is irrelevant.
 When applied to gradient-based optimisations, this has to be taken into account.
+Also important to note is the fact that when different features are combined in a single loss, weighting each features contribution becomes another hyperparameter in the training process.
 
 The third category contains distance-based metrics.
 Technically speaking, a loss function is a distance metric, however, what we mean are mathematical descriptions of similarity between spike trains, rather than between raw voltage traces.
