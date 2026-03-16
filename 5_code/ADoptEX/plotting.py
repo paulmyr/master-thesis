@@ -562,6 +562,7 @@ def parameter_comparison_plot(
     result: TrainingResult,
     bounds: dict[str, ParamBounds] | None = None,
     figsize: tuple[float, float] | None = None,
+    figtitle: str="Parameter changes (normalized to bounds)",
 ) -> Figure:
     """Horizontal bar chart showing parameter changes within bounds.
 
@@ -572,9 +573,11 @@ def parameter_comparison_plot(
         result: TrainingResult from training
         bounds: Parameter bounds dict. If None, uses PARAM_BOUNDS.
         figsize: Figure size. If None, auto-scaled to number of params.
+        figtitle: Figure title.
 
     Returns:
         Matplotlib Figure
+
     """
     from ADoptEX.core.parameters import PARAM_BOUNDS
 
@@ -644,7 +647,7 @@ def parameter_comparison_plot(
     ax.plot([], [], "o", color="tab:blue", markersize=6, label="Trained")
     ax.legend(fontsize=8, loc="lower right")
 
-    fig.suptitle("Parameter changes (normalized to bounds)", fontsize=9)
+    fig.suptitle(f"{figtitle}", fontsize=9)
     fig.tight_layout()
     return fig
 

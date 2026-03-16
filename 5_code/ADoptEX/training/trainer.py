@@ -227,8 +227,8 @@ def setup_trainable_cell(
     cell.set("AdEx_a", initial_params["a"])
     cell.set("AdEx_b", initial_params["b"])
 
-    # Set initial voltage
-    cell.set("v", initial_params.get("E_L", -70.0))
+    # Set initial voltage (must match create_adex_cell which uses v_reset)
+    cell.set("v", initial_params.get("v_reset", -58.0))
 
     # Setup recording
     cell.record("v")
@@ -503,7 +503,7 @@ def train(
             normalized_grads = jax.tree.map(
                 lambda g: g / (norm**config.polyak_beta + 1e-8), grads
             )
-            effective_lr = config.learning_rate * float(loss) ** config.polyak_alpha
+            effective_lr = config.learning_rate * abs(float(loss)) ** config.polyak_alpha
             opt_state.hyperparams["learning_rate"] = effective_lr
             updates, opt_state = optimizer.update(normalized_grads, opt_state)
         else:
@@ -531,8 +531,9 @@ def train(
         elif lr_schedule_fn is not None:
             lr_history.append(float(lr_schedule_fn(epoch)))
 
-        # Track best parameters
-        if loss_val < best_loss:
+        # Track best parameters (use abs to handle losses that can go negative,
+        # e.g. Soft-DTW where the floor is negative due to softmin bias)
+        if abs(loss_val) < abs(best_loss):
             best_loss = loss_val
             best_trainable_params = trainable_params
             best_epoch = epoch

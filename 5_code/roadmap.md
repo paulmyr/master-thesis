@@ -430,6 +430,68 @@ Based on the diagnosis, the following interventions target the actual root cause
 
 ---
 
+### 10. Two-Stage Windowed Curriculum for Adaptation Parameters
+
+**Why it helps:**
+Gradients for adaptation parameters (a, b, τ_w) vanish because they are only non-zero in a
+narrow post-spike window, but backpropagation must traverse the full simulation (5000+
+timesteps of leak dynamics). This item splits training into two stages that match each
+parameter group to the timescale where its gradient signal lives.
+
+**The gradient anatomy for a, b, τ_w:**
+- `∂loss/∂b` flows through the spike event (`w → w + b`) and post-spike voltage recovery.
+  Relatively direct but buried under thousands of leak timesteps.
+- `∂loss/∂τ_w` flows through the temporal decay `w ~ exp(-dt/τ_w)`. Strongest right after
+  a spike (when w is large), decays as w → 0. Needs multiple ISIs to constrain.
+- `∂loss/∂a` flows through the subthreshold coupling `a*(v - E_L)/τ_w`. Continuous but weak.
+
+**Approach — two-stage curriculum:**
+
+*Stage 1: Train membrane parameters on the full trace.*
+- Trainable: gL, EL, VT, ΔT, C_m
+- Frozen: a, b, τ_w (at initial values)
+- Loss: Deistler summary statistics or MSE on full trace
+- These parameters shape subthreshold dynamics and have gradient flow across the whole trace.
+
+*Stage 2: Train adaptation parameters on a short spike window.*
+- Trainable: a, b, τ_w
+- Frozen: membrane parameters (from stage 1)
+- Loss: Soft-DTW or Van Rossum on a window containing the first 3-5 spikes
+- Window length: ~2-3× τ_w past the last spike in the window (~150-200 ms of spiking
+  activity for typical τ_w ~ 30 ms)
+- This gives short backprop paths (500-2000 timesteps), visible ISI adaptation pattern
+  (constrains τ_w), and clean initial conditions (w ≈ 0 at stimulus onset).
+
+**Why 3-5 spikes, not just the first spike:**
+- A single spike cannot disentangle b (magnitude of w jump) from τ_w (decay rate) —
+  different (b, τ_w) pairs produce identical first-spike recovery but divergent ISI
+  adaptation.
+- The ISI adaptation pattern (ISIs getting longer as w accumulates) is the primary signal
+  that constrains τ_w independently from b.
+- a is mostly visible in subthreshold dynamics and the slow coupling between v and w;
+  multiple spikes provide more signal.
+
+**What needs to change in ADoptEX:**
+- `train()` currently takes a single `trainable_params` list. Stage 1 and stage 2 are
+  two sequential `train()` calls with different `trainable_params` and loss functions.
+- Stage 2 needs a way to specify a shorter simulation window or crop the loss computation.
+  Options: (a) pass a shorter `t_max` to the loss closure, (b) add a `loss_window`
+  parameter to `make_soft_dtw_loss_fn()` / `make_van_rossum_loss_fn()` that slices the
+  simulated voltage before computing loss, (c) handle windowing in the notebook.
+- No changes to the training loop itself — just orchestration in the notebook.
+
+**Scope:** Mostly notebook-level orchestration. May need a `loss_window` parameter in
+loss closures (~20 lines). Low implementation risk.
+
+**Relationship to other items:**
+- Orthogonal to items 1-4 (uses existing training infrastructure)
+- Complementary to item 5 (soft-DTW preprocessing) — stage 2 benefits from DTW preprocessing
+- Simpler alternative to item 8 (truncated BPTT) for the specific problem of adaptation
+  parameter training
+- Benefits from item 4 (sigmoid reparameterization) for smooth bound handling in both stages
+
+---
+
 ## Jaxley Building Blocks Reference
 
 | Tool | Location | Signature |
@@ -450,9 +512,11 @@ Item 5 is independent (loss module only).
 Items 6-8 depend on the training infrastructure from 1-4.
 Item 9 is independent of 1-8 but should be done after item 4 (sigmoid reparameterization)
 so that C_m bounds are handled smoothly from the start.
+Item 10 is orthogonal to all other items (notebook-level orchestration). Benefits from
+item 4 (smooth bounds) and item 5 (DTW preprocessing for stage 2).
 
 Suggested batches:
 1. **Batch A** (immediate): Items 1 + 2 -- optax-only changes, minimal risk
 2. **Batch B** (next): Items 3 + 4 -- training loop changes, moderate complexity
-3. **Batch C** (then): Items 5 + 6 + 9 -- loss preprocessing + per-param LR + trainable C_m
+3. **Batch C** (then): Items 5 + 6 + 9 + 10 -- loss preprocessing + per-param LR + trainable C_m + windowed curriculum
 4. **Batch D** (if needed): Items 7 + 8 -- multi-start and TBPTT

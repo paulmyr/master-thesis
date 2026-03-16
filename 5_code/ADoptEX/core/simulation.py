@@ -162,7 +162,7 @@ def create_adex_cell(
     cell.set(f"{prefix}_b", params["b"])
 
     # Set initial voltage
-    cell.set("v", params["v_reset"])
+    cell.set("v", params["E_L"])
 
     # Setup recording
     if record:
