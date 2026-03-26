@@ -270,6 +270,39 @@ def setup_trainable_cell_step(
     return cell, None, t_max, cell.get_parameters()
 
 
+def make_initial_trainable_params(
+    cell: jx.Cell,
+    initial_params: dict[str, float],
+) -> list[dict]:
+    """Build trainable_params with new initial values for an existing cell.
+
+    This allows reusing a single cell across multiple starts -- the cell
+    topology, channels, stimulus, and ``make_trainable()`` calls stay the same,
+    only the parameter *values* change.
+
+    Args:
+        cell: Cell that already has ``make_trainable()`` called on it.
+        initial_params: Dict mapping standard param names (``g_L``, ``C_m``, ...)
+            to desired initial values.
+
+    Returns:
+        Trainable params list in Jaxley format (same structure as
+        ``cell.get_parameters()``), but with values from *initial_params*.
+    """
+    base_params = cell.get_parameters()
+    result = []
+    for param_dict in base_params:
+        new_dict = {}
+        for key, val in param_dict.items():
+            clean_key = _param_key_to_bounds_key(key)
+            if clean_key in initial_params:
+                new_dict[key] = jnp.array([initial_params[clean_key]])
+            else:
+                new_dict[key] = val
+        result.append(new_dict)
+    return result
+
+
 def _create_optimizer(config: TrainingConfig):
     """Create optimizer based on config.
 
@@ -407,6 +440,7 @@ def train(
     trainable_params: list[dict],
     config: TrainingConfig | None = None,
     initial_params: dict | None = None,
+    grad_fn: Callable | None = None,
 ) -> TrainingResult:
     """
     Train AdEx parameters using gradient descent.
@@ -419,6 +453,9 @@ def train(
         trainable_params: Initial trainable parameters from cell.get_parameters()
         config: Training configuration
         initial_params: Initial parameter values (for logging only)
+        grad_fn: Pre-compiled JIT gradient function. If provided, reuses it
+            instead of building a new one. Useful when running multiple starts
+            that share the same cell and loss structure.
 
     Returns:
         TrainingResult with final parameters and training history
@@ -497,11 +534,17 @@ def train(
             (" " + " ".join(extras)) if extras else "",
         )
 
+    # JIT-compile value_and_grad once; first call triggers XLA compilation,
+    # all subsequent epochs reuse the compiled code (10-100x faster per epoch).
+    # Callers can pass a pre-compiled grad_fn to reuse across multiple starts.
+    if grad_fn is None:
+        grad_fn = jax.jit(jax.value_and_grad(loss_fn))
+
     for epoch in range(config.n_epochs):
         t0 = time.time()
 
         # Compute loss and gradients
-        loss, grads = jax.value_and_grad(loss_fn)(trainable_params)
+        loss, grads = grad_fn(trainable_params)
 
         # Gradient diagnostics
         grad_norm = _compute_grad_norm(grads)
@@ -611,3 +654,79 @@ def train(
         lr_history=lr_history,
         best_epoch=best_epoch,
     )
+
+
+def train_scan(
+    loss_fn: Callable,
+    trainable_params: list[dict],
+    config: TrainingConfig,
+) -> tuple[list[dict], jnp.ndarray]:
+    """Pure-JAX training loop using ``jax.lax.scan``.
+
+    Unlike :func:`train`, this function has **no side effects** (no logging,
+    timing, early stopping, or best-param tracking).  This makes it compatible
+    with ``jax.jit`` and ``jax.vmap``, enabling GPU-parallel multi-start
+    optimization.
+
+    Args:
+        loss_fn: Differentiable loss function ``params -> scalar``.
+        trainable_params: Initial trainable parameters (Jaxley format).
+        config: Training configuration (optimizer, LR, epochs, etc.).
+
+    Returns:
+        ``(final_params, loss_history)`` where *loss_history* is a 1-D
+        ``jnp.ndarray`` of length ``config.n_epochs``.
+    """
+    # Sigmoid reparameterization (if enabled)
+    param_transform = None
+    if config.use_param_transform:
+        param_transform = build_param_transform(trainable_params, PARAM_BOUNDS)
+        trainable_params = nudge_from_bounds(trainable_params, PARAM_BOUNDS)
+        trainable_params = param_transform.inverse(trainable_params)
+        _original_loss_fn = loss_fn
+        loss_fn = lambda p: _original_loss_fn(param_transform.forward(p))
+
+    optimizer = _create_optimizer(config)
+    opt_state = optimizer.init(trainable_params)
+
+    clip = config.clip_to_bounds and param_transform is None
+
+    if config.optimizer == "polyak":
+
+        def step(carry, _):
+            params, opt_st = carry
+            loss, grads = jax.value_and_grad(loss_fn)(params)
+            norm = jnp.sqrt(
+                sum(jnp.sum(g**2) for d in grads for g in d.values())
+            )
+            normalized_grads = jax.tree.map(
+                lambda g: g / (norm**config.polyak_beta + 1e-8), grads
+            )
+            effective_lr = config.learning_rate * jnp.abs(loss) ** config.polyak_alpha
+            opt_st.hyperparams["learning_rate"] = effective_lr
+            updates, new_opt_st = optimizer.update(normalized_grads, opt_st)
+            new_params = optax.apply_updates(params, updates)
+            if clip:
+                new_params = _clip_trainable_params(new_params, PARAM_BOUNDS)
+            return (new_params, new_opt_st), loss
+
+    else:
+
+        def step(carry, _):
+            params, opt_st = carry
+            loss, grads = jax.value_and_grad(loss_fn)(params)
+            updates, new_opt_st = optimizer.update(grads, opt_st)
+            new_params = optax.apply_updates(params, updates)
+            if clip:
+                new_params = _clip_trainable_params(new_params, PARAM_BOUNDS)
+            return (new_params, new_opt_st), loss
+
+    (final_params, _), loss_history = jax.lax.scan(
+        step, (trainable_params, opt_state), None, length=config.n_epochs
+    )
+
+    # Map back to constrained space
+    if param_transform is not None:
+        final_params = param_transform.forward(final_params)
+
+    return final_params, loss_history
