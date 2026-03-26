@@ -16,12 +16,11 @@ import jax.numpy as jnp
 import jaxley as jx
 import numpy as np
 import optax
-from jaxley.channels import AdExSurrogate
 
 log = logging.getLogger(__name__)
 
 from ADoptEX.core.parameters import PARAM_BOUNDS, clip_params
-from ADoptEX.core.simulation import geometry_for_capacitance
+from ADoptEX.core.simulation import create_adex_cell
 
 
 @dataclass
@@ -113,11 +112,11 @@ class TrainingResult:
     loss_history: list[float]
     time_per_epoch: list[float]
 
-    # Configuration used
-    config: TrainingConfig
-
     # Initial parameters for comparison
     initial_params: dict
+
+    # Configuration used (optional when constructing manually in notebooks)
+    config: TrainingConfig | None = None
 
     # Gradient diagnostics (pre-clipping raw norms)
     grad_norms: list[float] = field(default_factory=list)
@@ -130,6 +129,9 @@ class TrainingResult:
 
     # Epoch that achieved the lowest training loss
     best_epoch: int = -1
+
+    # Optional label for display/plotting
+    label: str = ""
 
     @property
     def final_loss(self) -> float:
@@ -165,32 +167,28 @@ class TrainingResult:
 
 def setup_trainable_cell(
     initial_params: dict,
-    current_trace_nA: jnp.ndarray,
+    current_trace_pA: jnp.ndarray,
     dt_ms: float,
     config: TrainingConfig | None = None,
     trainable_params: list[str] | None = None,
 ) -> tuple[jx.Cell, tuple, float, list[dict]]:
     """
-    Create a Jaxley cell with trainable AdEx parameters.
+    Create a Jaxley cell with trainable AdEx parameters and data stimulation.
 
-    This sets up the cell with make_trainable() so parameters can be
-    optimized via jx.integrate(cell, params=params).
+    Delegates cell creation to ``create_adex_cell``, then adds data stimulation
+    and returns the trainable parameter handles.
 
     Args:
         initial_params: Dictionary of initial AdEx parameters
-        current_trace_nA: Current trace in nA for data_stimulate
+        current_trace_pA: Current trace in pA (converted to nA internally)
         dt_ms: Time step in ms
-        config: Training configuration (optional)
+        config: Training configuration (optional, provides surrogate settings
+            and default trainable_params list)
         trainable_params: List of parameter names to make trainable.
-            If None, uses default set: ['g_L', 'E_L', 'v_T', 'v_reset', 'tau_w', 'a', 'b']
+            If None, uses config.trainable_params or default set.
 
     Returns:
         Tuple of (cell, data_stimuli, t_max, trainable_params_list)
-
-    Example:
-        >>> cell, data_stimuli, t_max, params = setup_trainable_cell(
-        ...     initial_params, current_nA, dt_ms=0.1
-        ... )
     """
     if config is None:
         config = TrainingConfig()
@@ -200,56 +198,76 @@ def setup_trainable_cell(
     if trainable_params is None:
         trainable_params = ["C_m", "g_L", "E_L", "v_T", "v_reset", "tau_w", "a", "b"]
 
-    # Calculate geometry from capacitance
-    radius_um, length_um = geometry_for_capacitance(initial_params["C_m"])
-
-    # Create cell
-    cell = jx.Cell()
-    cell.set("radius", radius_um)
-    cell.set("length", length_um)
-
-    # Insert AdExSurrogate for differentiable spikes
-    cell.insert(
-        AdExSurrogate(
-            surrogate_type=config.surrogate_type, surrogate_slope=config.surrogate_slope
-        )
+    cell = create_adex_cell(
+        initial_params,
+        use_surrogate=True,
+        surrogate_type=config.surrogate_type,
+        surrogate_slope=config.surrogate_slope,
+        trainable=True,
+        trainable_params=trainable_params,
+        record=True,
     )
 
-    # Set initial parameter values
-    cell.set("capacitance", initial_params["C_m"])
-    cell.set("AdEx_g_L", initial_params["g_L"])
-    cell.set("AdEx_E_L", initial_params["E_L"])
-    cell.set("AdEx_v_T", initial_params["v_T"])
-    cell.set("AdEx_delta_T", initial_params["delta_T"])
-    cell.set("AdEx_v_threshold", initial_params["v_threshold"])
-    cell.set("AdEx_v_reset", initial_params["v_reset"])
-    cell.set("AdEx_tau_w", initial_params["tau_w"])
-    cell.set("AdEx_a", initial_params["a"])
-    cell.set("AdEx_b", initial_params["b"])
-
-    # Set initial voltage (must match create_adex_cell which uses v_reset)
-    cell.set("v", initial_params.get("v_reset", -58.0))
-
-    # Setup recording
-    cell.record("v")
-    cell.record("AdEx_w")
-    cell.record("AdEx_spikes")
-
-    # Make specified parameters trainable
-    for param_name in trainable_params:
-        if param_name == "C_m":
-            cell.make_trainable("capacitance")
-        else:
-            cell.make_trainable(f"AdEx_{param_name}")
-
-    # Setup data stimulation
+    # Convert pA → nA and setup data stimulation
+    current_trace_nA = current_trace_pA / 1000.0
     data_stimuli = cell.comp(0).data_stimulate(current_trace_nA, None)
-    t_max = len(current_trace_nA) * dt_ms
+    t_max = len(current_trace_pA) * dt_ms
 
-    # Get trainable parameters
-    trainable_params_list = cell.get_parameters()
+    return cell, data_stimuli, t_max, cell.get_parameters()
 
-    return cell, data_stimuli, t_max, trainable_params_list
+
+def setup_trainable_cell_step(
+    initial_params: dict,
+    stim_current_pA: float,
+    stim_duration_ms: float,
+    stim_delay_ms: float,
+    dt_ms: float,
+    config: TrainingConfig | None = None,
+    trainable_params: list[str] | None = None,
+) -> tuple[jx.Cell, None, float, list[dict]]:
+    """
+    Create a Jaxley cell with trainable AdEx parameters and step current stimulus.
+
+    Uses ``jx.step_current`` + ``cell.stimulate`` (idiomatic Jaxley step current).
+
+    Args:
+        initial_params: Dictionary of initial AdEx parameters
+        stim_current_pA: Step current amplitude in pA
+        stim_duration_ms: Duration of current injection in ms
+        stim_delay_ms: Delay before stimulus onset in ms
+        dt_ms: Time step in ms
+        config: Training configuration (optional)
+        trainable_params: List of parameter names to make trainable
+
+    Returns:
+        Tuple of (cell, None, t_max, trainable_params_list).
+        Second element is None (no data_stimuli for step current).
+    """
+    if config is None:
+        config = TrainingConfig()
+
+    if trainable_params is None:
+        trainable_params = config.trainable_params
+    if trainable_params is None:
+        trainable_params = ["C_m", "g_L", "E_L", "v_T", "v_reset", "tau_w", "a", "b"]
+
+    cell = create_adex_cell(
+        initial_params,
+        use_surrogate=True,
+        surrogate_type=config.surrogate_type,
+        surrogate_slope=config.surrogate_slope,
+        trainable=True,
+        trainable_params=trainable_params,
+        record=True,
+    )
+
+    # Step current via jx.step_current (pA -> nA conversion)
+    t_max = stim_delay_ms + stim_duration_ms + 50.0
+    I_nA = stim_current_pA / 1000.0
+    current = jx.step_current(stim_delay_ms, stim_duration_ms, I_nA, dt_ms, t_max=t_max)
+    cell.stimulate(current)
+
+    return cell, None, t_max, cell.get_parameters()
 
 
 def _create_optimizer(config: TrainingConfig):
@@ -321,7 +339,7 @@ def _clip_trainable_params(params: list[dict], bounds: dict) -> list[dict]:
     return clipped
 
 
-def _build_param_transform(params: list[dict], bounds: dict):
+def build_param_transform(params: list[dict], bounds: dict):
     """Build a ``ParamTransform`` mapping each trainable parameter through a sigmoid.
 
     Imports ``SigmoidTransform`` and ``ParamTransform`` lazily so the Jaxley
@@ -345,7 +363,7 @@ def _build_param_transform(params: list[dict], bounds: dict):
     return ParamTransform(tf_list)
 
 
-def _nudge_from_bounds(params: list[dict], bounds: dict) -> list[dict]:
+def nudge_from_bounds(params: list[dict], bounds: dict) -> list[dict]:
     """Nudge parameters sitting at exact bounds inward by a tiny epsilon.
 
     This prevents ``SigmoidTransform.inverse()`` from returning +/-Inf when
@@ -425,8 +443,8 @@ def train(
     # Sigmoid reparameterization: work in unconstrained space
     param_transform = None
     if config.use_param_transform:
-        param_transform = _build_param_transform(trainable_params, PARAM_BOUNDS)
-        trainable_params = _nudge_from_bounds(trainable_params, PARAM_BOUNDS)
+        param_transform = build_param_transform(trainable_params, PARAM_BOUNDS)
+        trainable_params = nudge_from_bounds(trainable_params, PARAM_BOUNDS)
         trainable_params = param_transform.inverse(trainable_params)
         # Wrap loss_fn so it maps unconstrained -> constrained before evaluation
         _original_loss_fn = loss_fn
@@ -492,8 +510,8 @@ def train(
         if jnp.isnan(loss) or jnp.isinf(loss):
             log.warning("NaN/Inf loss at epoch %d — stopping early", epoch)
             break
-        if jnp.isnan(grad_norm):
-            log.warning("NaN gradients at epoch %d — stopping early", epoch)
+        if jnp.isnan(grad_norm) or jnp.isinf(grad_norm):
+            log.warning("NaN/Inf gradients at epoch %d — stopping early", epoch)
             break
 
         # Update parameters
