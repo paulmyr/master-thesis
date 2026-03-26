@@ -18,6 +18,7 @@ import numpy as np
 from jaxley.channels import AdEx, AdExSurrogate
 
 
+
 @dataclass
 class SimulationResult:
     """Result from an AdEx simulation.
@@ -51,42 +52,39 @@ class SimulationResult:
 SurrogateType: TypeAlias = Literal["sigmoid", "exponential", "superspike"]
 
 
-def geometry_for_capacitance(
-    C_pF: float, specific_capacitance: float = 1.0
-) -> tuple[float, float]:
+# Fixed geometry for point-neuron mode.
+#
+# The AdEx model is a point neuron with absolute parameters (pF, nS, pA),
+# but Jaxley is geometry-aware and converts injected currents via compartment area.
+# By choosing area = 100 um², the unit conversion becomes trivial:
+#
+#   Jaxley converts nA → uA/cm²:  I_nA / area_um2 * 1e5
+#   With area = 100:               I_nA / 100 * 1e5 = I_nA * 1000 = I_pA
+#   Voltage solver divides by cm:  I_pA / C_m_pF = mV/ms  ✓
+#
+# This means: just convert pA → nA (÷1000) and pass to Jaxley. No C_m scaling.
+# C_m is freely trainable — it only appears in update_states and the solver's /cm.
+POINT_NEURON_RADIUS_UM = 1.0
+POINT_NEURON_LENGTH_UM = 50.0 / np.pi  # ≈ 15.916 um; area = 2π·1·50/π = 100 um²
+
+
+def point_neuron_geometry() -> tuple[float, float]:
+    """Return fixed (radius_um, length_um) for point-neuron simulations.
+
+    The geometry gives a compartment area of exactly 100 um², which makes
+    Jaxley's internal current conversion (nA → uA/cm²) map cleanly onto
+    point-neuron units: ``I_pA / C_m_pF = mV/ms``.
+
+    No capacitance argument needed — the geometry is independent of C_m.
     """
-    Calculate cylindrical cell geometry to achieve target total capacitance.
-
-    Jaxley expects specific capacitance (uF/cm^2) and cell geometry.
-    AdEx models specify absolute capacitance (pF). This function computes
-    a fictitious cylindrical geometry that yields the desired total capacitance.
-
-    Args:
-        C_pF: Target total membrane capacitance in picofarads (pF)
-        specific_capacitance: Specific membrane capacitance in uF/cm^2 (default: 1.0)
-
-    Returns:
-        Tuple of (radius_um, length_um) for the cylindrical cell
-
-    Example:
-        >>> radius, length = geometry_for_capacitance(200.0)  # 200 pF
-        >>> # Creates geometry with surface area = 200e-6 / 1.0 = 2e-4 cm^2
-    """
-    C_uF = C_pF * 1e-6
-    area_cm2 = C_uF / specific_capacitance
-    # For a cylinder: area = 2 * pi * r * L, with L = pi * r
-    # area = 2 * pi^2 * r^2, so r = sqrt(area / (2 * pi^2))
-    radius_cm = np.sqrt(area_cm2 / (2 * np.pi**2))
-    radius_um = radius_cm * 1e4
-    length_um = np.pi * radius_um
-    return float(radius_um), float(length_um)
+    return POINT_NEURON_RADIUS_UM, POINT_NEURON_LENGTH_UM
 
 
 def create_adex_cell(
     params: dict,
     use_surrogate: bool = True,
     surrogate_type: SurrogateType = "sigmoid",
-    surrogate_slope: float = 25.0,
+    surrogate_slope: float = 5.0,
     trainable: bool = False,
     trainable_params: list[str] | None = None,
     record: bool = True,
@@ -129,8 +127,8 @@ def create_adex_cell(
         >>> # For training:
         >>> cell = create_adex_cell(params, trainable=True)
     """
-    # Calculate geometry from capacitance
-    radius_um, length_um = geometry_for_capacitance(params["C_m"])
+    # Fixed geometry for point-neuron mode (area = 100 um²)
+    radius_um, length_um = point_neuron_geometry()
 
     # Create cell with geometry
     cell = jx.Cell()
@@ -240,14 +238,15 @@ def simulate_jaxley(
         record=True,
     )
 
-    # Convert current: Jaxley expects nA, scaled by geometry
-    # The geometry was computed for C_m, so we scale current by C_m
-    I_nA = stim_current_pA * params["C_m"] / 1000.0
+    # Convert pA → nA (Jaxley's point-process unit).
+    # With area = 100 um², Jaxley's internal conversion gives:
+    #   I_nA / 100 * 1e5 = I_pA (uA/cm²) → dv/dt = I_pA / C_m [mV/ms]
+    I_nA = stim_current_pA / 1000.0
 
     # Create step current stimulus
     cell.stimulate(
         jx.step_current(
-            stim_delay_ms, stim_delay_ms + stim_duration_ms, I_nA, dt_ms, t_max=t_max_ms
+            stim_delay_ms, stim_duration_ms, I_nA, dt_ms, t_max=t_max_ms
         )
     )
 
@@ -337,8 +336,8 @@ def simulate_brian2(
         1, eqs, threshold="v>v_threshold", reset="v=v_reset; w+=b", method="euler"
     )
 
-    # Initial conditions
-    neuron.v = params["v_reset"] * mV
+    # Initial conditions — match Jaxley's create_adex_cell (v = E_L)
+    neuron.v = params["E_L"] * mV
     neuron.w = 0 * pA
     neuron.I = 0 * pA
 
@@ -416,8 +415,8 @@ def simulate_with_current_trace(
         record=True,
     )
 
-    # Convert current trace: scale by C_m and convert to nA
-    current_nA = current_trace_pA * params["C_m"] / 1000.0
+    # Convert pA → nA (see POINT_NEURON_RADIUS_UM comment for unit derivation)
+    current_nA = current_trace_pA / 1000.0
     current_nA = jnp.array(current_nA)
 
     # Setup data stimulation

@@ -13,15 +13,18 @@ from .parameters import (DATA_PATHS, DEFAULT_PARAMS, NAUD_PARAMETERS,
                          PARAM_BOUNDS, AdExParams, ParamBounds, clip_params,
                          convert_trainable_to_params,
                          params_to_trainable_format)
-from .simulation import (SimulationResult, SurrogateType, create_adex_cell,
-                         geometry_for_capacitance, simulate_brian2,
+from .simulation import (POINT_NEURON_LENGTH_UM, POINT_NEURON_RADIUS_UM,
+                         SimulationResult, SurrogateType, create_adex_cell,
+                         point_neuron_geometry, simulate_brian2,
                          simulate_jaxley, simulate_with_current_trace)
 
 __all__ = [
     # simulation
     "SimulationResult",
     "SurrogateType",
-    "geometry_for_capacitance",
+    "point_neuron_geometry",
+    "POINT_NEURON_RADIUS_UM",
+    "POINT_NEURON_LENGTH_UM",
     "create_adex_cell",
     "simulate_jaxley",
     "simulate_brian2",

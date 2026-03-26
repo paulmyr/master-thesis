@@ -63,6 +63,48 @@ NAUD_PARAMETERS: dict[str, AdExParams] = {
         "b": 60.0,  # pA - strong spike-triggered adaptation
         "I": 500.0,  # pA
     },
+    "initial_bursting": {
+        # Initial bursting pattern from Naud et al. (2008)
+        "C_m": 200.0,  # pF
+        "g_L": 10.0,  # nS
+        "E_L": -70.0,  # mV
+        "v_T": -50.0,  # mV
+        "delta_T": 2.0,  # mV
+        "v_reset": -58.0,  # mV
+        "v_threshold": 0.0,  # mV
+        "tau_w": 50.0,  # ms
+        "a": -5.0,  # nS - negative subthreshold adaptation
+        "b": 60.0,  # pA - strong spike-triggered adaptation
+        "I": 500.0,  # pA
+    },
+    "regular_bursting": {
+        # Regular bursting pattern from Naud et al. (2008)
+        "C_m": 200.0,  # pF
+        "g_L": 10.0,  # nS
+        "E_L": -70.0,  # mV
+        "v_T": -50.0,  # mV
+        "delta_T": 2.0,  # mV
+        "v_reset": -58.0,  # mV
+        "v_threshold": 0.0,  # mV
+        "tau_w": 300.0,  # ms - slow adaptation
+        "a": -5.0,  # nS - negative subthreshold adaptation
+        "b": 60.0,  # pA - strong spike-triggered adaptation
+        "I": 500.0,  # pA
+    },
+    "delayed_accelerating": {
+        # Delayed accelerating pattern from Naud et al. (2008)
+        "C_m": 200.0,  # pF
+        "g_L": 10.0,  # nS
+        "E_L": -70.0,  # mV
+        "v_T": -50.0,  # mV
+        "delta_T": 2.0,  # mV
+        "v_reset": -58.0,  # mV
+        "v_threshold": 0.0,  # mV
+        "tau_w": 300.0,  # ms - slow adaptation
+        "a": -2.0,  # nS - moderate negative adaptation
+        "b": 0.0,  # pA - no spike-triggered adaptation
+        "I": 500.0,  # pA
+    },
     "original": {
         # Parameters from Brette & Gerstner (2005)
         "C_m": 281.0,  # pF
@@ -123,13 +165,13 @@ class ParamBounds:
 
 
 PARAM_BOUNDS: dict[str, ParamBounds] = {
-    "C_m": ParamBounds(180.0, 220.0),
+    "C_m": ParamBounds(10.0, 240.0),
     "capacitance": ParamBounds(180.0, 220.0),  # alias for C_m (Jaxley compartment param)
-    "g_L": ParamBounds(9.0, 13.0),
-    "E_L": ParamBounds(-75.0, -68.0),
-    "v_T": ParamBounds(-60.0, -30.0),
-    "delta_T": ParamBounds(2, 20.0),
-    "v_reset": ParamBounds(-60.0, -45.0),
+    "g_L": ParamBounds(6.0, 14.0),
+    "E_L": ParamBounds(-110.0, -65.0),
+    "v_T": ParamBounds(-60.0, -35.0),
+    "delta_T": ParamBounds(1, 20.0),
+    "v_reset": ParamBounds(-80.0, -45.0),
     "v_threshold": ParamBounds(-20.0, 30.0),
     "tau_w": ParamBounds(20.0, 320.0),
     "a": ParamBounds(-10.0, 3.0),
