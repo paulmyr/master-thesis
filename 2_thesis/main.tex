@@ -894,22 +894,9 @@ This thesis addresses that gap.
 This work introduces two contributions: firstly, we implement the \gls{AdEx} model within \texttt{Jaxley}, providing both standard and surrogate gradient variants.
 The surrogate implementation can easily adopted to Jaxleys existing simplified models: \gls{LIF} and Izhikevich.
 Secondly, we use \texttt{Jaxley} to perform gradient-based optimisation.
-We investigate two\merror{update this to the correct amount} different loss functions:
-\begin{itemize}
-  \item \mwarning{What about absolute error}\gls{MSE}
-  \item \itodo{Introduce dynamic time warping}
-  \item Guarino et al. \cite{Guarino2025} feature-based loss function.
-\end{itemize}
-Using gradient-based optimisation requires a differentiable loss function.
-Therefore we will introduce a gradient version of the feature-based loss function.
-
-\itodo{Update the methodology introduction to reflect all four loss functions we implemented:}
-\begin{itemize}
-  \item We investigate four different loss functions: MSE, soft-DTW+MAE, a differentiable version of the Guarino et al.\ feature-based loss, and the Van Rossum spike train distance
-  \item Additionally, we implement and evaluate multiple training stabilization techniques: gradient clipping, LR schedules (cosine/exponential decay), Polyak gradient normalization, multi-start optimization, and multi-stage curriculum training
-  \item We also implement a shared utility: differentiable spike peak injection $V_{\text{out}}(t) = s(t) \cdot V_{\text{peak}} + (1 - s(t)) \cdot V(t)$, used by MSE and soft-DTW to make spiking vs.\ non-spiking visible in the loss
-  \item We evaluate using the coincidence factor $\Gamma$ \cite{Jolivet2008} as primary metric
-\end{itemize}
+We investigate two?\merror{how many exactly?\\add softdtw?\\add mse?} different loss functions (Van Rossum and Feature-Based),
+analyse (hyper-) parameter sensitivity and evaluate the quality of generated fits using the coincidence factor $\Gamma$ \cite{Jolivet2008} as primary metric.
+Additionally, we implement and discuss different training stabilisation techniques.
 
 \section{Integration of Surrogate Gradients into Jaxley}
 \texttt{Jaxley} is built on top of \texttt{JAX} and leverages its automatic differentiation capabilities for gradient-based parameter optimisation.
@@ -951,9 +938,10 @@ where $\sigma$ is the sigmoid function and $\beta$ controls the steepness.
 \end{equation}
 
 All three surrogates are centred at the threshold ($x = v - v_{\text{th}}$).
-The hyperparameter $\beta$ controls the sharpness: higher values produce steeper gradients at the threshold, while lower values spread the gradient over a wider voltage ranges.
+The hyperparameter $\beta$ controls the sharpness: higher values produce steeper gradients at the threshold,
+while lower values spread the gradient over wider voltage ranges.
 
-\subsection{Implementation Details}
+\subsection{Implementation Details}\label{sec:method:surrogate-gradients:implementation}
 We reformulate the conditional reset from a discrete selection:
 \begin{equation}
     v_{\text{new}} = \begin{cases} v_{\text{reset}} & \text{if spike} \\ v & \text{otherwise} \end{cases}
@@ -998,7 +986,7 @@ To prevent numerical overflow from the exponential spike mechanism, we clamp the
 After each integration step, we check for threshold crossing ($V > v_{\text{threshold}}$).
 If the threshold is crossed, we apply the reset conditions from Equation~\ref{eq:adex3}.
 For standard \texttt{LIF}, \texttt{AdEx} or \texttt{Izhikevich}, this uses \texttt{jax.lax.select()} for conditional assignment.
-In the differentiable variants, we use the continuous formulation described in Section~\ref{sec:method} for both $V$ and $w$:
+In the differentiable variants, we use the continuous formulation described in Section~\ref{sec:method:surrogate-gradients:implementation} for both $V$ and $w$:
 \begin{align}
     V_{\text{new}} &= s \cdot V_r + (1 - s) \cdot V, \\
     w_{\text{new}} &= s \cdot (w + b) + (1 - s) \cdot w,
@@ -1033,11 +1021,28 @@ Stimulation current & $I$ & 500 & pA\\
 \end{tabular}
 \end{table}
 
-AdEx is defined using absolute capacitance ($pF$).
-However, Jaxley is targeted at bio-physical HH-type simulations, and therefore works with cell morphology and gemoetries.
-It therefore expects specific capacitance ($\mu F/cm^2$).
-To circumvent this problem, we compute a fictitious cylindrical geometries whose surface area yields the desired total capacitance assuming jaxleys standard specific capacitance ($1 \mu F/cm^2$).
-This scales injected currents to maintain correct dynamics.
+\subsubsection{Point-Neuron Geometry Bridge}\label{sec:geometry-bridge}
+
+The \gls{AdEx} model is a point neuron defined with absolute units ($C_m$ in pF, $g_L$ in nS, currents in pA).
+Jaxley, however, is designed for geometry-aware biophysical simulations and operates with specific capacitance ($\mu$F/cm$^2$), current densities ($\mu$A/cm$^2$), and compartment surface areas.
+To bridge this mismatch, we assign a fixed fictitious cylindrical geometry with surface area $A = 100\;\mu\text{m}^2$ (radius $= 1\;\mu$m, length $= 50/\pi\;\mu$m) and store the absolute capacitance $C_m$ (in pF) directly in Jaxley's \texttt{capacitance} parameter.
+This works because:
+
+\begin{itemize}
+  \item \textbf{Internal dynamics} are handled entirely in \texttt{update\_states}, which computes
+    $\mathrm{d}V/\mathrm{d}t = (-I_\text{leak} + I_\text{exp} - w) / C_m$
+    in point-neuron units (pA\,/\,pF\,$=$\,mV/ms). Jaxley's voltage solver sees zero channel current (\texttt{compute\_current} returns 0), so there is no double integration.
+
+  \item \textbf{External current} passes through Jaxley's \texttt{convert\_point\_process\_to\_distributed}: $I_\text{nA} / A \times 10^5\;[\mu\text{A/cm}^2]$.
+    With $A = 100\;\mu\text{m}^2$ this simplifies to $I_\text{nA} \times 1000 = I_\text{pA}$ (numerically).
+    The voltage solver then divides by \texttt{capacitance}: $I_\text{pA}\,/\,C_m\;[\text{mV/ms}]$, which is the correct point-neuron result.
+
+  \item \textbf{$C_m$ is trainable.} Because the geometry is fixed, changing $C_m$ during optimisation only affects the two divisions described above --- exactly the physical role of membrane capacitance.
+    No geometry recalculation is needed.
+
+  \item \textbf{Current conversion} from the user side reduces to a simple unit change: $I_\text{nA} = I_\text{pA}\,/\,1000$.
+    No parameter-dependent scaling is required.
+\end{itemize}
 
 \subsection{Implementation Verification}\label{sec:verification}
 \begin{figure*}
