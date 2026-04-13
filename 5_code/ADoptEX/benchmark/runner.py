@@ -564,9 +564,26 @@ def _compute_nm_loss_from_traces(
         return mse_loss(sim_voltage[:min_len], target_v[:min_len], config)
 
     elif objective_type == "guarino":
-        raise NotImplementedError(
-            "Guarino loss for Nelder-Mead not supported (requires cell object)"
+        from ADoptEX.loss.guarino import (
+            GuarinoLossConfig,
+            extract_experimental_features,
+            guarino_loss,
         )
+
+        config = loss_config or GuarinoLossConfig()
+        stim_duration_ms = target_data["stim_duration_ms"]
+        stim_end_index = target_data["stim_end_index"]
+
+        # Inject peaks so hard threshold detection works (Jaxley suppresses peaks)
+        sim_voltage_peaks = inject_spike_peaks(sim_voltage, sim_spikes, v_peak_mv=35.0)
+
+        sim_features = extract_experimental_features(
+            sim_voltage_peaks, dt_ms, stim_duration_ms, stim_end_index
+        )
+        exp_features = extract_experimental_features(
+            jnp.array(target_data["voltage"]), dt_ms, stim_duration_ms, stim_end_index
+        )
+        return guarino_loss(sim_features, exp_features, config)
     else:
         raise ValueError(f"Unknown NM objective: {objective_type}")
 

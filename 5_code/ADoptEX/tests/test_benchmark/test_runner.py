@@ -4,10 +4,11 @@ Unit tests for generate_initial_params and metric helpers.
 Integration tests (marked @slow) require Jaxley.
 """
 
+import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from ADoptEX.benchmark.runner import generate_initial_params
+from ADoptEX.benchmark.runner import _compute_nm_loss_from_traces, generate_initial_params
 from ADoptEX.benchmark.scenarios import SyntheticScenario
 from ADoptEX.core.parameters import PARAM_BOUNDS
 
@@ -89,3 +90,68 @@ class TestGenerateInitialParams:
         for k, v in gt.items():
             if k not in tonic_scenario.trainable_params:
                 assert params[k] == v
+
+
+# ── _compute_nm_loss_from_traces: guarino objective ─────────────────────────
+
+
+class TestComputeNmLossGuarino:
+    """Unit tests for the guarino case in _compute_nm_loss_from_traces.
+
+    Pure JAX/NumPy — no Jaxley required.
+    """
+
+    DT_MS = 0.025
+    N = 2000  # 50 ms at 0.025 ms/step
+
+    @pytest.fixture
+    def no_spike_traces(self):
+        voltage = jnp.full(self.N, -65.0)
+        spikes = jnp.zeros(self.N)
+        target_data = {
+            "voltage": np.array(jnp.full(self.N, -65.0)),
+            "stim_duration_ms": 50.0,
+            "stim_end_index": self.N - 1,
+        }
+        return spikes, voltage, target_data
+
+    @pytest.fixture
+    def single_spike_traces(self):
+        voltage = jnp.full(self.N, -65.0)
+        spikes = jnp.zeros(self.N).at[500].set(1.0)
+        target_data = {
+            "voltage": np.array(jnp.full(self.N, -65.0)),
+            "stim_duration_ms": 50.0,
+            "stim_end_index": self.N - 1,
+        }
+        return spikes, voltage, target_data
+
+    def test_returns_finite_scalar(self, single_spike_traces):
+        sim_spikes, sim_voltage, target_data = single_spike_traces
+        loss = _compute_nm_loss_from_traces(
+            "guarino", sim_spikes, sim_voltage, target_data,
+            loss_config=None, dt_ms=self.DT_MS,
+        )
+        assert np.isfinite(float(loss))
+        assert float(loss) >= 0.0
+
+    def test_no_spikes_returns_finite(self, no_spike_traces):
+        sim_spikes, sim_voltage, target_data = no_spike_traces
+        loss = _compute_nm_loss_from_traces(
+            "guarino", sim_spikes, sim_voltage, target_data,
+            loss_config=None, dt_ms=self.DT_MS,
+        )
+        assert np.isfinite(float(loss))
+
+    def test_identical_traces_low_loss(self, single_spike_traces):
+        """Sim identical to target should give near-zero loss."""
+        sim_spikes, sim_voltage, target_data = single_spike_traces
+        # Target has same spike as sim
+        sim_voltage_with_peak = sim_voltage.at[500].set(35.0)
+        target_data = dict(target_data)
+        target_data["voltage"] = np.array(sim_voltage_with_peak)
+        loss = _compute_nm_loss_from_traces(
+            "guarino", sim_spikes, sim_voltage, target_data,
+            loss_config=None, dt_ms=self.DT_MS,
+        )
+        assert float(loss) < 1.0

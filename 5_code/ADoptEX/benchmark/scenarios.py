@@ -184,6 +184,66 @@ def get_synthetic_scenarios(
 TONIC_PERTURBATIONS: list[float] = [0.01, 0.03, 0.05, 0.10, 0.15, 0.25]
 
 
+# ── Single-Parameter Benchmark (Q: Per-Parameter Convergence) ───────────────
+
+SINGLE_PARAM_PERTURBATIONS: list[float] = [0.05, 0.10, 0.15, 0.25, 0.50]
+
+
+def get_single_param_scenarios(
+    n_starts: int = 10,
+    seed: int = 42,
+    perturbations: list[float] | None = None,
+    ground_truths: list[dict] | None = None,
+    param_names: list[str] | None = None,
+) -> list[SyntheticScenario]:
+    """Generate scenarios that optimize one parameter at a time.
+
+    Tests each trainable parameter in isolation to identify which parameters
+    converge easily and which are difficult.
+
+    Args:
+        n_starts: Random initializations per scenario.
+        seed: Base seed for initial param generation.
+        perturbations: Perturbation fractions. Default: SINGLE_PARAM_PERTURBATIONS.
+        ground_truths: Ground truth dicts. Default: TONIC_GROUND_TRUTHS.
+        param_names: Which parameters to test individually.
+            Default: MEMBRANE_PARAMS.
+
+    Returns:
+        List of SyntheticScenario objects.
+    """
+    if perturbations is None:
+        perturbations = list(SINGLE_PARAM_PERTURBATIONS)
+
+    if ground_truths is None:
+        from .sampling import TONIC_GROUND_TRUTHS
+
+        ground_truths = TONIC_GROUND_TRUTHS
+
+    if param_names is None:
+        param_names = list(MEMBRANE_PARAMS)
+
+    scenarios = []
+    for param in param_names:
+        for i, gt in enumerate(ground_truths):
+            for perturbation in perturbations:
+                pct = int(perturbation * 100)
+                name = f"single_{param}_gt{i:02d}_{pct}pct"
+                scenarios.append(
+                    SyntheticScenario(
+                        name=name,
+                        ground_truth_params=gt["params"].copy(),
+                        trainable_params=[param],
+                        stim_current_pA=gt["stim_current_pA"],
+                        perturbation=perturbation,
+                        n_starts=n_starts,
+                        seed=seed,
+                    )
+                )
+
+    return scenarios
+
+
 def get_tonic_scenarios(
     n_starts: int = 10,
     seed: int = 42,

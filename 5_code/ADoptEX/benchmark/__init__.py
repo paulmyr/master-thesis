@@ -6,7 +6,7 @@ logic for comparing gradient-based and derivative-free optimization approaches.
 """
 
 from .analysis import format_latex_table, print_table, recovery_table, summary_table
-from .methods import MethodConfig, get_hp_sensitivity_methods, get_standard_methods, get_tonic_methods
+from .methods import MethodConfig, get_hp_sensitivity_methods, get_single_param_methods, get_standard_methods, get_tonic_methods
 from .results import RunResult, ScenarioResults, load_all_results, load_results, save_results
 from .runner import (
     generate_initial_params,
@@ -21,8 +21,10 @@ from .sampling import (
     TONIC_TRAINABLE_PARAMS,
 )
 from .scenarios import (
+    SINGLE_PARAM_PERTURBATIONS,
     TONIC_PERTURBATIONS,
     SyntheticScenario,
+    get_single_param_scenarios,
     get_synthetic_scenarios,
     get_tonic_scenarios,
 )
@@ -35,12 +37,15 @@ __all__ = [
     # scenarios
     "SyntheticScenario",
     "get_synthetic_scenarios",
+    "get_single_param_scenarios",
     "get_tonic_scenarios",
+    "SINGLE_PARAM_PERTURBATIONS",
     "TONIC_PERTURBATIONS",
     # methods
     "MethodConfig",
     "get_standard_methods",
     "get_hp_sensitivity_methods",
+    "get_single_param_methods",
     "get_tonic_methods",
     # results
     "RunResult",

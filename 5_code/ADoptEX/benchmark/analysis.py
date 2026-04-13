@@ -178,7 +178,9 @@ def _latex_escape(text: str) -> str:
 
 
 def _is_nan(value) -> bool:
-    """Check if a value is NaN."""
+    """Check if a value is NaN or None."""
+    if value is None:
+        return True
     try:
         return math.isnan(value)
     except (TypeError, ValueError):

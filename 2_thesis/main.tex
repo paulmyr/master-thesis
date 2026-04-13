@@ -995,54 +995,56 @@ where $s: V\rightarrow [0,1]$ is the surrogate of the Heaviside function.
 
 \subsection{Model Parameters}
 Table~\ref{tab:adex_params} summarises the \gls{AdEx} parameters and their default values.
-Parameters without direct physiological counterparts (e.g., $a$, $b$, $\tau_w$) are primary targets for optimisation.
-\itodo{Welche Parameter haben eine biologischen Gegenspieler? Kann ich hier frei wählen, was ist warum wie eingeschränkt?}
+Some parameters have direct physiological counterparts (e.g., $C_m$ or $E_L$) and could technically be measured.
+However, to accurately reproduce neuron spiking behaviour, values can significantly diverge from bio-physical plausible value ranges.
+This is expected and accepted when using simplified models, however, increases the demand of fitting strategies.
 
 \begin{table}[t]
 \centering
 \caption{\gls{AdEx} model parameters and default values.}
 \label{tab:adex_params}
-\begin{tabular}{llll}
+\begin{tabular}{lllll}
 \toprule
-\textbf{Parameter} & \textbf{Symbol} & \textbf{Default} & \textbf{Unit} \\
+\textbf{Parameter} & \textbf{Symbol} & \textbf{Default} & \textbf{Unit} & \textbf{Trainable} \\
 \midrule
-Membrane capacitance & $C$ & 200 & pF \\
-Leak conductance & $g_L$ & 10 & nS \\
-Leak reversal & $E_L$ & -70 & mV \\
-Threshold potential & $V_T$ & -50 & mV \\
-Slope factor & $\Delta_T$ & 2 & mV \\
-Reset potential & $V_r$ & -58 & mV \\
-Detection threshold & $v_{\text{threshold}}$ & 0 & mV \\
-Adaptation time constant & $\tau_w$ & 30 & ms \\
-Subthreshold adaptation & $a$ & 2 & nS \\
-Spike-triggered adaptation & $b$ & 0 & pA \\
-Stimulation current & $I$ & 500 & pA\\
+Membrane capacitance & $C$ & 200 & pF & Yes\\
+Leak conductance & $g_L$ & 10 & nS & Yes\\
+Leak reversal & $E_L$ & -70 & mV & Yes \\
+Threshold potential & $V_T$ & -50 & mV & Yes\\
+Slope factor & $\Delta_T$ & 2 & mV & Yes\\
+Reset potential & $V_r$ & -58 & mV & No \\
+Detection threshold & $v_{\text{threshold}}$ & 0 & mV & No \\
+Adaptation time constant & $\tau_w$ & 30 & ms & Yes$^*$\\
+Subthreshold adaptation & $a$ & 2 & nS & Yes$^*$ \\
+Spike-triggered adaptation & $b$ & 0 & pA & Yes$^*$ \\
+Stimulation current & $I$ & 500 & pA & No \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+More on trainability of the parameters in section ~\ref{} \itodo{Add result section}
 
 \subsubsection{Point-Neuron Geometry Bridge}\label{sec:geometry-bridge}
 
 The \gls{AdEx} model is a point neuron defined with absolute units ($C_m$ in pF, $g_L$ in nS, currents in pA).
 Jaxley, however, is designed for geometry-aware biophysical simulations and operates with specific capacitance ($\mu$F/cm$^2$), current densities ($\mu$A/cm$^2$), and compartment surface areas.
-To bridge this mismatch, we assign a fixed fictitious cylindrical geometry with surface area $A = 100\;\mu\text{m}^2$ (radius $= 1\;\mu$m, length $= 50/\pi\;\mu$m) and store the absolute capacitance $C_m$ (in pF) directly in Jaxley's \texttt{capacitance} parameter.
-This works because:
+To bridge this mismatch, we assign a fixed fictitious cylindrical geometry with surface area
+$A = 100\;\mu\text{m}^2$ (radius $= 1\;\mu$m, length $= 50/\pi\;\mu$m) and store the absolute capacitance $C_m$ (in pF) directly in Jaxley's \texttt{capacitance} parameter.
+Why does this work?
+As stated in \ref{sec:adex_impl}, there are two different options on how voltage equations are solved in \texttt{Jaxley}: \texttt{update\_states} and \texttt{compute\_current}.
+Since \texttt{compute\_current} is set to 0, all internal dynamics are handled entirely in \texttt{update\_states}, which computes
+$\mathrm{d}V/\mathrm{d}t = (-I_\text{leak} + I_\text{exp} - w) / C_m$
+in point-neuron units (pA\,/\,pF\,$=$\,mV/ms).
+This way, there is no double integration.
+However, external current stimulation is passed into the channel by \texttt{Jaxley's} \texttt{convert\-\_point\-\_process\-\_to\-\_distributed}.
+$I_\text{nA} / A \times 10^5\;[\mu\text{A/cm}^2]$.
+With $A = 100\;\mu\text{m}^2$ this simplifies to $I_\text{nA} \times 1000 = I_\text{pA}$ (numerically).
+The voltage solver then divides by \texttt{capacitance}: $I_\text{pA}\,/\,C_m\;[\text{mV/ms}]$, which is in correct point-neuron units.
 
-\begin{itemize}
-  \item \textbf{Internal dynamics} are handled entirely in \texttt{update\_states}, which computes
-    $\mathrm{d}V/\mathrm{d}t = (-I_\text{leak} + I_\text{exp} - w) / C_m$
-    in point-neuron units (pA\,/\,pF\,$=$\,mV/ms). Jaxley's voltage solver sees zero channel current (\texttt{compute\_current} returns 0), so there is no double integration.
-
-  \item \textbf{External current} passes through Jaxley's \texttt{convert\_point\_process\_to\_distributed}: $I_\text{nA} / A \times 10^5\;[\mu\text{A/cm}^2]$.
-    With $A = 100\;\mu\text{m}^2$ this simplifies to $I_\text{nA} \times 1000 = I_\text{pA}$ (numerically).
-    The voltage solver then divides by \texttt{capacitance}: $I_\text{pA}\,/\,C_m\;[\text{mV/ms}]$, which is the correct point-neuron result.
-
-  \item \textbf{$C_m$ is trainable.} Because the geometry is fixed, changing $C_m$ during optimisation only affects the two divisions described above --- exactly the physical role of membrane capacitance.
-    No geometry recalculation is needed.
-
-  \item \textbf{Current conversion} from the user side reduces to a simple unit change: $I_\text{nA} = I_\text{pA}\,/\,1000$.
-    No parameter-dependent scaling is required.
-\end{itemize}
+Importantly, \textbf{$C_m$ is trainable.}
+Because the geometry is fixed, changing $C_m$ during optimisation only affects the two divisions described above --- exactly the physical role of membrane capacitance.
+Therefore no geometry recalculations are needed.
+Conversion complexity is reduced to a simple unit change: $I_\text{nA} = I_\text{pA}\,/\,1000$, no parameter-dependent scaling is required.
 
 \subsection{Implementation Verification}\label{sec:verification}
 \begin{figure*}
@@ -1053,7 +1055,7 @@ This works because:
 Tonic and adaptation parameters refer to the parameters provided by \cite{Naud2008}, original parameters are the parameters used in the original AdEx paper \cite{Brette2005}.
 Top row shows the simulated voltage traces.
 Interesting to note is that when the threshold is reached, the voltage is reset in the same time step.
-This leads to the voltage never crossing the threshold line in the recordings.
+This behaviour needs to be treated when thinking about loss functions.
 Second row displays the adaptation current $w$.
 Last row compares the spike timings between \texttt{Brian2} and \texttt{Jaxley}.
 We expect minor numerical differences, mainly to the fact that different integration methods are used.}\label{fig:brian_comparison}
@@ -1112,7 +1114,8 @@ We assess implementation correctness through:
 \begin{itemize}
   \item \textbf{Visual comparison:} Overlay of voltage traces from both simulators (Figure~\ref{fig:brian_comparison}).
   \item \textbf{Spike count:} Both implementations produce identical spike counts for all test configurations.
-  \item \textbf{Spike timing:} Maximum absolute difference in spike times $\max_i |t_i^{\text{Jaxley}} - t_i^{\text{Brian2}}| < 1$ ms.
+  \item \textbf{Spike timing:} Maximum absolute difference in spike times
+    $$\max_i |t_i^{\text{Jaxley}} - t_i^{\text{Brian2}}| < 1\text{ms.}$$
 \end{itemize}
 
 \section{Parameter Optimisation Evaluation}\label{sec:param_opt}
@@ -1120,27 +1123,6 @@ We assess implementation correctness through:
 \itodo{Introduce the testing framework to evaluate different loss functions, algorhithms, maybe hyperparameter optimization etc. etc.}
 
 To evaluate the effectiveness of gradient-based optimisation with surrogate gradients, we fit \gls{AdEx} model parameters to experimental voltage recordings.
-\begin{table}[thb]
-\centering
-\caption{Initial AdEx model parameters and trainability}
-\label{tab:initial-params}
-\begin{tabular}{lccc}
-\toprule
-\textbf{Parameter} & \textbf{Symbol} & \textbf{Initial Value} & \textbf{Trainable} \\
-\midrule
-Membrane capacitance & $C_m$ & 200.0\,pF & No \\
-Leak conductance & $g_L$ & 10.0\,nS & Yes \\
-Leak reversal potential & $E_L$ & $-68.0$\,mV & Yes \\
-Spike threshold & $V_T$ & $-45.0$\,mV & Yes \\
-Slope factor & $\Delta_T$ & 2.0\,mV & No \\
-Spike detection threshold & $V_\text{threshold}$ & $-20.0$\,mV & No \\
-Reset potential & $V_\text{reset}$ & $-55.0$\,mV & Yes \\
-Adaptation time constant & $\tau_w$ & 100.0\,ms & Yes \\
-Subthreshold adaptation & $a$ & 2.0\,nS & Yes \\
-Spike-triggered adaptation & $b$ & 1.0\,pA & Yes \\
-\bottomrule
-\end{tabular}
-\end{table}
 
 \subsection{Dataset}\label{sec:data-set}
 We use intracellular recordings from striatal projection neurons provided by Johansson and Silberberg \cite{Johansson2020}.
@@ -1381,7 +1363,10 @@ MSE training result.
 }\label{fig:mse-training-results}
 \end{figure}
 
-
+We evaluated gradient-based parameter fitting for the AdEx model using \texttt{Jaxley} across four loss functions, multiple surrogate gradients and several training stabilization techniques.
+We find that --- while being able to match spike counts and somewhat imitate spiking patterns, it consistently fails to match high precision spike timing across all tested configurations.
+Through loss function analysis and gradient diagnostics, we can identify six distinct failure modes that explain this behaviour.
+All gradient approaches were consistently outperformed by a Nelder-Mead baseline approach, which was able to capture spike timing precisions reliably.
 
 \cleardoublepage
 \chapter{Discussion}\label{ch:discussion}\deadline{May 31st}

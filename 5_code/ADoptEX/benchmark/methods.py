@@ -213,6 +213,64 @@ def get_hp_sensitivity_methods() -> list[MethodConfig]:
     return variants
 
 
+def get_single_param_methods() -> list[MethodConfig]:
+    """Return methods for the single-parameter convergence benchmark.
+
+    Same as tonic methods but with fewer epochs/fev since 1-param
+    optimization should converge faster.
+
+    - grad_vanrossum: Polyak + Van Rossum, 50 epochs
+    - grad_guarino: Polyak + Guarino feature loss, 50 epochs
+    - nelder_mead: Nelder-Mead + Van Rossum, 500 max_fev
+    """
+    return [
+        MethodConfig(
+            name="grad_vanrossum",
+            method_type="gradient",
+            loss_type="van_rossum",
+            loss_config=VanRossumLossConfig(tau_ms=10.0),
+            training_config=TrainingConfig(
+                optimizer="polyak",
+                learning_rate=0.01,
+                n_epochs=50,
+                print_every=10,
+                surrogate_type="sigmoid",
+                surrogate_slope=2.0,
+                use_param_transform=True,
+                clip_to_bounds=False,
+                return_best=True,
+                verbose=False,
+            ),
+        ),
+        MethodConfig(
+            name="grad_guarino",
+            method_type="gradient",
+            loss_type="guarino",
+            loss_config=GuarinoLossConfig(),
+            training_config=TrainingConfig(
+                optimizer="polyak",
+                learning_rate=0.01,
+                n_epochs=50,
+                print_every=10,
+                surrogate_type="sigmoid",
+                surrogate_slope=2.0,
+                use_param_transform=True,
+                clip_to_bounds=False,
+                return_best=True,
+                verbose=False,
+            ),
+        ),
+        MethodConfig(
+            name="nelder_mead",
+            method_type="nelder_mead",
+            nm_max_fev=500,
+            nm_objective="van_rossum",
+            nm_loss_config=VanRossumLossConfig(tau_ms=10.0),
+            surrogate_slope=5.0,
+        ),
+    ]
+
+
 def get_tonic_methods() -> list[MethodConfig]:
     """Return the 3 methods for the tonic convergence benchmark.
 
@@ -258,11 +316,19 @@ def get_tonic_methods() -> list[MethodConfig]:
             ),
         ),
         MethodConfig(
-            name="nelder_mead",
+            name="nelder_mead_vanrossum",
             method_type="nelder_mead",
             nm_max_fev=2000,
             nm_objective="van_rossum",
             nm_loss_config=VanRossumLossConfig(tau_ms=10.0),
+            surrogate_slope=5.0,
+        ),
+        MethodConfig(
+            name="nelder_mead_guarino",
+            method_type="nelder_mead",
+            nm_max_fev=2000,
+            nm_objective="guarino",
+            nm_loss_config=GuarinoLossConfig(weight_spike_count=0.2),
             surrogate_slope=5.0,
         ),
     ]
