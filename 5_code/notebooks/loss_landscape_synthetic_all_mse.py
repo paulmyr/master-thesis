@@ -180,9 +180,8 @@ for pair_idx, (pi, pj) in enumerate(pairs):
 print(f"\nTotal time: {time.time() - t_start:.0f}s")
 
 from matplotlib.colors import LogNorm
-from matplotlib.ticker import LogLocator, LogFormatterSciNotation
+from matplotlib.ticker import LogLocator, LogFormatterSciNotation, MaxNLocator
 
-# Math-formatted labels for thesis presentation
 PARAM_LABELS = {
     "capacitance": r"$C_m$",
     "g_L": r"$g_L$",
@@ -195,41 +194,46 @@ PARAM_LABELS = {
     "b": r"$b$",
 }
 
+# Units per loss function (missing entries render without a unit bracket)
+LOSS_UNITS = {
+    "MSE": r"mV$^2$",
+}
+
 def _map_name_to_initial(s):
     return "C_m" if s == "capacitance" else s
 
-# Global log-scale color across all pairs (clipped at 95th percentile to tame outliers)
 all_Z = np.concatenate([g["Z"].ravel() for g in grids.values()])
 positive = all_Z[np.isfinite(all_Z) & (all_Z > 0)]
 vmin = float(np.min(positive)) if positive.size else 1e-6
 vmax_clip = float(np.nanpercentile(all_Z, 95))
-vmax_clip = max(vmax_clip, vmin * 10)  # guarantee at least one decade
+vmax_clip = max(vmax_clip, vmin * 10)
 vmax_true = float(np.nanmax(all_Z))
 norm = LogNorm(vmin=vmin, vmax=vmax_clip)
 levels = np.geomspace(vmin, vmax_clip, 21)
 
+# Rendered at thesis print size: ~9x7 inches fits full-page landscape on A4
+# (use \begin{sidewaysfigure}\includegraphics{...}\end{sidewaysfigure} in LaTeX).
+# Fonts stay legible because LaTeX no longer rescales the figure.
 with plt.rc_context({
     "font.family": "serif",
     "font.size": 10,
     "axes.labelsize": 12,
     "axes.titlesize": 11,
-    "xtick.labelsize": 8,
-    "ytick.labelsize": 8,
-    "axes.linewidth": 0.8,
+    "xtick.labelsize": 9,
+    "ytick.labelsize": 9,
+    "axes.linewidth": 0.6,
 }):
     fig, axes = plt.subplots(
-        N_PARAMS,
-        N_PARAMS,
-        figsize=(2.6 * N_PARAMS, 2.6 * N_PARAMS),
-        squeeze=False,
+        N_PARAMS, N_PARAMS, figsize=(9.0, 7.0), squeeze=False,
     )
 
-    # Hide all axes first
+    # Hide every cell first; lower triangle turns its cells back on below.
+    # Diagonal cells stay hidden — the param name is already on the outer
+    # row/column labels, so a diagonal label would be redundant.
     for ax_row in axes:
         for ax in ax_row:
             ax.set_visible(False)
 
-    # Fill lower triangle
     mappable = None
     for (pi, pj), g in grids.items():
         ax = axes[pj, pi]
@@ -240,83 +244,75 @@ with plt.rc_context({
             g["X"], g["Y"], Z_plot,
             levels=levels, cmap="viridis", norm=norm, extend="max",
         )
-        ax.contour(
-            g["X"], g["Y"], Z_plot,
-            levels=levels[::4], colors="white", linewidths=0.25, alpha=0.35,
-        )
         if mappable is None:
             mappable = cs
 
-        # Mark default params (white circle, black edge — visible on any colormap value)
         ax.plot(
             initial_params[_map_name_to_initial(PARAM_NAMES[pi])],
             initial_params[_map_name_to_initial(PARAM_NAMES[pj])],
-            marker="o",
-            markersize=5,
-            markerfacecolor="white",
-            markeredgecolor="black",
-            markeredgewidth=0.8,
+            marker="o", markersize=4,
+            markerfacecolor="white", markeredgecolor="black", markeredgewidth=0.7,
             linestyle="none",
         )
 
         if pj == N_PARAMS - 1:
-            ax.set_xlabel(PARAM_LABELS[PARAM_NAMES[pi]])
+            ax.set_xlabel(PARAM_LABELS[PARAM_NAMES[pi]], fontsize=12, labelpad=4)
+            # Rotate bottom-row tick labels 40° to avoid overlap when the axis
+            # shows 3-4 digit negative numbers (E_L, V_T, V_reset).
+            for lbl in ax.get_xticklabels():
+                lbl.set_rotation(40)
+                lbl.set_ha("right")
+                lbl.set_rotation_mode("anchor")
         else:
             ax.set_xticklabels([])
         if pi == 0:
-            ax.set_ylabel(PARAM_LABELS[PARAM_NAMES[pj]])
+            ax.set_ylabel(PARAM_LABELS[PARAM_NAMES[pj]], fontsize=12, labelpad=3)
         else:
             ax.set_yticklabels([])
 
-        ax.tick_params(direction="out", length=2.5, width=0.6)
+        # Prune end-ticks so neighbouring cells' first/last labels don't kiss.
+        ax.xaxis.set_major_locator(MaxNLocator(3, prune="both"))
+        ax.yaxis.set_major_locator(MaxNLocator(3, prune="both"))
+        ax.tick_params(direction="out", length=2.2, width=0.5, pad=1.5)
         for spine in ax.spines.values():
-            spine.set_linewidth(0.6)
+            spine.set_linewidth(0.5)
 
-    # Diagonal labels
-    for i in range(N_PARAMS):
-        ax = axes[i, i]
-        ax.set_visible(True)
-        ax.text(
-            0.5, 0.5,
-            PARAM_LABELS[PARAM_NAMES[i]],
-            transform=ax.transAxes,
-            ha="center", va="center",
-            fontsize=18,
-        )
-        ax.set_xticks([])
-        ax.set_yticks([])
-        for spine in ax.spines.values():
-            spine.set_visible(False)
-
-    # Reserve space for the colorbar before laying out
-    fig.subplots_adjust(left=0.06, right=0.88, bottom=0.06, top=0.94, wspace=0.08, hspace=0.08)
-
-    # Shared colorbar (log scale) with explicit decade ticks + minor ticks for context
-    cbar_ax = fig.add_axes([0.90, 0.10, 0.014, 0.78])
-    cbar = fig.colorbar(mappable, cax=cbar_ax, extend="max")
-
-    # Major ticks at every decade inside [vmin, vmax_clip]
-    lo = int(np.floor(np.log10(vmin)))
-    hi = int(np.ceil(np.log10(vmax_clip)))
-    major = LogLocator(base=10.0, numticks=(hi - lo + 1))
-    minor = LogLocator(base=10.0, subs=np.arange(2, 10), numticks=50)
-    cbar.ax.yaxis.set_major_locator(major)
-    cbar.ax.yaxis.set_minor_locator(minor)
-    cbar.ax.yaxis.set_major_formatter(LogFormatterSciNotation(base=10))
-    cbar.ax.tick_params(which="major", labelsize=9, direction="out", length=3.5, width=0.6)
-    cbar.ax.tick_params(which="minor", direction="out", length=2.0, width=0.5)
-    cbar.outline.set_linewidth(0.6)
-
-    cbar.set_label(
-        rf"{loss_name} loss  [mV$^2$]"
-        + f"\n(log scale; clipped above {vmax_clip:.2g}, true max {vmax_true:.2g})",
-        fontsize=10,
-        labelpad=10,
+    # Extra bottom margin for the rotated tick labels in the bottom row.
+    fig.subplots_adjust(
+        left=0.06, right=0.985, bottom=0.11, top=0.97,
+        wspace=0.08, hspace=0.08,
     )
 
-    fig.suptitle(
-        f"{loss_name} loss landscape across all trainable parameter pairs",
-        fontsize=14, y=0.97,
+    # Horizontal colorbar centered in the figure, vertically placed inside
+    # row 1 of the upper triangle. Width ~4 cell-widths.
+    pos_row = axes[1, 0].get_position()  # row 1, used only as y anchor
+    cbar_width = 0.42
+    cbar_ax = fig.add_axes([
+        0.5 - cbar_width / 2,
+        pos_row.y0 + pos_row.height * 0.48,
+        cbar_width,
+        pos_row.height * 0.22,
+    ])
+    cbar = fig.colorbar(mappable, cax=cbar_ax, orientation="horizontal", extend="max")
+
+    lo = int(np.floor(np.log10(vmin)))
+    hi = int(np.ceil(np.log10(vmax_clip)))
+    cbar.ax.xaxis.set_major_locator(LogLocator(base=10.0, numticks=(hi - lo + 1)))
+    cbar.ax.xaxis.set_minor_locator(
+        LogLocator(base=10.0, subs=np.arange(2, 10), numticks=50)
+    )
+    cbar.ax.xaxis.set_major_formatter(LogFormatterSciNotation(base=10))
+    cbar.ax.tick_params(
+        which="major", labelsize=9, direction="out", length=2.5, width=0.5, pad=1.5
+    )
+    cbar.ax.tick_params(which="minor", direction="out", length=1.6, width=0.4)
+    cbar.outline.set_linewidth(0.5)
+
+    unit_str = LOSS_UNITS.get(loss_name)
+    unit_bracket = f"  [{unit_str}]" if unit_str else ""
+    cbar.set_label(
+        rf"{loss_name} loss{unit_bracket} (log; clip $\geq$ {vmax_clip:.2g})",
+        fontsize=10, labelpad=4,
     )
 
     plt.savefig(
@@ -324,8 +320,9 @@ with plt.rc_context({
     )
     plt.show()
     print(f"Saved to {loss_name.lower()}_loss_landscape_grid.pdf")
-    print(f"Loss range across all pairs: [{float(np.nanmin(all_Z)):.3g}, {vmax_true:.3g}] mV^2")
-    print(f"Colorbar clip at 95th percentile: {vmax_clip:.3g} mV^2")
+    print(f"Loss range across all pairs: [{float(np.nanmin(all_Z)):.3g}, {vmax_true:.3g}]")
+    print(f"Colorbar clip at 95th percentile: {vmax_clip:.3g}")
+
 
 # Pick which parameter pair to plot in 3D.
 # Accepts either the display name ("C_m") or the internal name ("capacitance").
