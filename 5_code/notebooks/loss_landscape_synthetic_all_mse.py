@@ -5,20 +5,37 @@ from itertools import combinations
 
 import jax
 import jax.numpy as jnp
+import jax.random as jr
 import numpy as np
 from jax import config
-from jax.scipy.special import logsumexp
 
 from ADoptEX.core import simulate_jaxley
-from ADoptEX.core.data import TraceData
+from ADoptEX.core.data import TraceData, crop_to_stim_window, detect_spikes, load_trace
 from ADoptEX.core.parameters import DEFAULT_PARAMS, NAUD_PARAMETERS, PARAM_BOUNDS
-from ADoptEX.loss import inject_spike_peaks
-
-from ADoptEX.plotting import (
-    trace_stim_window_plot,
+from ADoptEX.core.simulation import simulate_with_current_trace
+from ADoptEX.evaluation.coincidence import coincidence_factor
+from ADoptEX.loss import (
+    GuarinoFeatures,
+    GuarinoLossConfig,
+    VanRossumLossConfig,
+    extract_experimental_features,
+    guarino_loss,
+    make_guarino_loss_fn,
+    make_van_rossum_loss_fn,
+    spike_train_from_voltage,
 )
-
-from ADoptEX.training.trainer import TrainingConfig, setup_trainable_cell
+from ADoptEX.plotting import (
+    fit_before_after_plot,
+    fit_comparison_plot,
+    parameter_comparison_plot,
+    spike_timing_plot,
+    trace_plot,
+    trace_stim_window_plot,
+    training_comparison_plot,
+    training_history_plot,
+)
+from ADoptEX.training import TrainingResult
+from ADoptEX.training.trainer import TrainingConfig, setup_trainable_cell, train
 
 config.update("jax_platform_name", "cpu")
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -56,160 +73,10 @@ for st in sim_init.spike_times:
 T = np.append(T, T[-1] + dt_ms)
 print(len(T))
 
-# --- Deistler preprocessing ---
-def sliding_window_max(v: jnp.ndarray, window_size: int, stride: int) -> jnp.ndarray:
-    """Sliding-window max reduction via jax.lax.reduce_window (differentiable)."""
-    return jax.lax.reduce_window(
-        v,
-        init_value=-jnp.inf,
-        computation=jax.lax.max,
-        window_dimensions=(window_size,),
-        window_strides=(stride,),
-        padding="VALID",
-    )
-
-
-def rescale_unit(v: jnp.ndarray, v_min: float, v_max: float, eps: float = 1e-8) -> jnp.ndarray:
-    """Rescale to [0, 1] using pre-computed min/max (shared across sim and target)."""
-    return (v - v_min) / (v_max - v_min + eps)
-
-
-# --- Soft-DTW ---
-_LARGE = 1e9  # stand-in for +inf; softmin treats -_LARGE/gamma as negligible
-
-
-def _softmin(values: jnp.ndarray, gamma: float) -> jnp.ndarray:
-    return -gamma * logsumexp(-values / gamma)
-
-
-def soft_dtw_from_cost(C: jnp.ndarray, gamma: float = 1.0) -> jnp.ndarray:
-    """Soft-DTW distance from a pre-built cost matrix C of shape (n, m).
-
-    R[0, 0] = 0; R[0, j>0] = R[i>0, 0] = +inf (approximated by _LARGE).
-    R[i, j] = C[i-1, j-1] + softmin_gamma(R[i-1, j-1], R[i-1, j], R[i, j-1]).
-    Returns R[n, m].
-    """
-    n, m = C.shape
-
-    def process_row(R_prev: jnp.ndarray, C_row: jnp.ndarray):
-        # R_prev has shape (m+1,); C_row has shape (m,).
-        def col_step(R_curr_prev, inputs):
-            R_diag, R_up, C_val = inputs
-            R_curr = C_val + _softmin(jnp.stack([R_diag, R_up, R_curr_prev]), gamma)
-            return R_curr, R_curr
-
-        col_inputs = (R_prev[:-1], R_prev[1:], C_row)
-        _, R_curr_rest = jax.lax.scan(col_step, _LARGE, col_inputs)
-        R_curr = jnp.concatenate([jnp.array([_LARGE]), R_curr_rest])
-        return R_curr, None
-
-    R_init = jnp.concatenate([jnp.zeros(1), jnp.full(m, _LARGE)])
-    R_final, _ = jax.lax.scan(process_row, R_init, C)
-    return R_final[-1]
-
-# --- Soft-DTW loss factory (Deistler preprocessing + divergence form) ---
-def make_soft_dtw_loss_fn(
-    cell,
-    data_stimuli,
-    t_max: float,
-    dt_ms: float,
-    exp_voltage: jnp.ndarray,
-    stim_end_index: int,
-    *,
-    window_size: int = 50,
-    stride: int = 30,
-    gamma: float = 0.5,
-    lambda_temp: float = 10.0,
-    spike_peak_mv: float | None = 35.0,
-    use_divergence: bool = True,
-):
-    """Build a closure `params -> scalar loss` computing soft-DTW on the
-    sliding-window-max-reduced, unit-rescaled voltage traces with an L1 +
-    (normalized) temporal-penalty cost.
-
-    Cost: C[i, j] = |x_i - y_j| + lambda_temp * |i - j| / (n - 1)
-    Both terms live in [0, 1], so lambda_temp directly controls timing vs. amplitude.
-
-    If `use_divergence=True` (default), returns the Cuturi & Blondel soft-DTW
-    divergence D(x, y) = sdtw(x, y) - 0.5 * (sdtw(x, x) + sdtw(y, y)), which is
-    non-negative and = 0 when x = y. This removes soft-DTW's intrinsic length-
-    dependent bias (~gamma * log(3) per cell) that otherwise pushes the loss
-    to large negative values, confusingly making a "better" fit look "worse".
-    """
-    import jaxley as jx
-
-    exp_v = jnp.asarray(exp_voltage)
-
-    # Precompute target preprocessing (static across training).
-    exp_reduced = sliding_window_max(exp_v, window_size, stride)
-    # Scale using the *reduced* target's min/max so the rescaled target covers [0, 1].
-    v_min = float(jnp.min(exp_reduced))
-    v_max = float(jnp.max(exp_reduced))
-    exp_scaled = rescale_unit(exp_reduced, v_min, v_max)
-    m = exp_scaled.shape[0]
-
-    # Precompute sdtw(y, y) — constant baseline used by the divergence form.
-    if use_divergence:
-        j_idx_y = jnp.arange(m, dtype=exp_scaled.dtype)
-        denom_y = jnp.maximum(jnp.asarray(m - 1, dtype=exp_scaled.dtype), 1.0)
-        C_yy = jnp.abs(exp_scaled[:, None] - exp_scaled[None, :]) + lambda_temp * (
-            jnp.abs(j_idx_y[:, None] - j_idx_y[None, :]) / denom_y
-        )
-        sdtw_yy = soft_dtw_from_cost(C_yy, gamma=gamma)
-    else:
-        sdtw_yy = jnp.asarray(0.0, dtype=exp_scaled.dtype)
-
-    def loss_fn(params):
-        results = jx.integrate(
-            cell,
-            params=params,
-            data_stimuli=data_stimuli,
-            delta_t=dt_ms,
-            t_max=t_max,
-        )
-        voltage = results[0].flatten()
-        min_len = min(len(voltage), len(exp_v))
-        sim_v = voltage[:min_len]
-
-        # Hard-inject peaks at spike timesteps (results[2] is 0/1 in the forward
-        # pass from AdExSurrogate's Heaviside). Mirrors the manual injection on
-        # the target trace so the sliding-window max sees the same peak height.
-        if spike_peak_mv is not None:
-            spikes = results[2].flatten()[:min_len]
-            sim_v = inject_spike_peaks(sim_v, spikes, spike_peak_mv)
-
-        sim_reduced = sliding_window_max(sim_v, window_size, stride)
-        sim_scaled = rescale_unit(sim_reduced, v_min, v_max)
-        n = sim_scaled.shape[0]
-
-        denom = jnp.maximum(jnp.asarray(max(n, m) - 1, dtype=exp_scaled.dtype), 1.0)
-        i_idx = jnp.arange(n, dtype=exp_scaled.dtype)[:, None]
-        j_idx = jnp.arange(m, dtype=exp_scaled.dtype)[None, :]
-        C_xy = jnp.abs(sim_scaled[:, None] - exp_scaled[None, :]) + lambda_temp * (
-            jnp.abs(i_idx - j_idx) / denom
-        )
-        sdtw_xy = soft_dtw_from_cost(C_xy, gamma=gamma)
-
-        if not use_divergence:
-            return sdtw_xy
-
-        # sdtw(x, x): full cost (amplitude + temporal), same form as C_yy.
-        # Using only the temporal penalty here would make sdtw(x, x) != sdtw(y, y)
-        # even when x == y, breaking the divergence identity D(x, x) = 0.
-        i_only = jnp.arange(n, dtype=exp_scaled.dtype)
-        C_xx = jnp.abs(sim_scaled[:, None] - sim_scaled[None, :]) + lambda_temp * (
-            jnp.abs(i_only[:, None] - i_only[None, :]) / denom
-        )
-        sdtw_xx = soft_dtw_from_cost(C_xx, gamma=gamma)
-
-        return sdtw_xy - 0.5 * (sdtw_xx + sdtw_yy)
-
-    return loss_fn
-
 from ADoptEX.loss import (
     extract_experimental_features,
     GuarinoLossConfig,
-    make_guarino_loss_fn,
+    make_guarino_loss_fn, MSELossConfig, make_mse_loss_fn,
 )
 
 training_config = TrainingConfig(
@@ -220,7 +87,7 @@ training_config = TrainingConfig(
     surrogate_slope=5.0,
 )
 
-data = TraceData(
+trace_stim_window_plot(TraceData(
     T,
     sim_init.voltage,
     np.full(len(T), initial_params["I"]),
@@ -228,9 +95,7 @@ data = TraceData(
     sim_init.spike_times,
     0,
     len(T),
-    initial_params["I"])
-
-trace_stim_window_plot(data)
+    initial_params["I"]))
 
 cell, data_stimuli, t_max, trainable_params = setup_trainable_cell(
     initial_params=initial_params,
@@ -240,23 +105,18 @@ cell, data_stimuli, t_max, trainable_params = setup_trainable_cell(
 )
 
 target_voltage = jnp.array(sim_init.voltage)
-stim_end_index = t_max_ms  # already 0-based in cropped trace
+stim_end_index = len(sim_init.voltage)
 
-loss_name = "Soft-DTW"
-loss_fn = make_soft_dtw_loss_fn(
+loss_name = 'MSE'
+loss_fn = make_mse_loss_fn(
     cell=cell,
     data_stimuli=data_stimuli,
     t_max=t_max,
     dt_ms=dt_ms,
     exp_voltage=target_voltage,
-    stim_end_index=len(sim_init.voltage),
-    window_size=50,
-    stride=30,
-    gamma=0.5,
-    lambda_temp=10.0,
-    spike_peak_mv=SPIKE_PEAK_MV,
+    stim_end_index=stim_end_index,
+    loss_config=MSELossConfig(normalize=False, clamp_threshold=None, spike_peak_mv=SPIKE_PEAK_MV),
 )
-
 
 # Build param name -> index mapping
 param_index = {}
@@ -333,11 +193,6 @@ PARAM_LABELS = {
     "tau_w": r"$\tau_w$",
     "a": r"$a$",
     "b": r"$b$",
-}
-
-# Units per loss function (missing entries render without a unit bracket)
-LOSS_UNITS = {
-    "MSE": r"mV$^2$",
 }
 
 def _map_name_to_initial(s):
@@ -452,10 +307,8 @@ with plt.rc_context({
     cbar.ax.tick_params(which="minor", direction="out", length=2.0, width=0.5)
     cbar.outline.set_linewidth(0.6)
 
-    unit_str = LOSS_UNITS.get(loss_name)
-    unit_bracket = f"  [{unit_str}]" if unit_str else ""
     cbar.set_label(
-        rf"{loss_name} loss{unit_bracket}"
+        rf"{loss_name} loss  [mV$^2$]"
         + f"\n(log scale; clipped above {vmax_clip:.2g}, true max {vmax_true:.2g})",
         fontsize=10,
         labelpad=10,
@@ -471,45 +324,162 @@ with plt.rc_context({
     )
     plt.show()
     print(f"Saved to {loss_name.lower()}_loss_landscape_grid.pdf")
-    print(f"Loss range across all pairs: [{float(np.nanmin(all_Z)):.3g}, {vmax_true:.3g}]")
-    print(f"Colorbar clip at 95th percentile: {vmax_clip:.3g}")
+    print(f"Loss range across all pairs: [{float(np.nanmin(all_Z)):.3g}, {vmax_true:.3g}] mV^2")
+    print(f"Colorbar clip at 95th percentile: {vmax_clip:.3g} mV^2")
 
-ax = plt.subplot(projection="3d")
+# Pick which parameter pair to plot in 3D.
+# Accepts either the display name ("C_m") or the internal name ("capacitance").
+x_param = "E_L"
+y_param = "g_L"
 
-surf = ax.plot_surface(
-    X,
-    Y,
-    Z_plot,
-    cmap=cm.jet,
-    edgecolor="none",
-    alpha=0.9,
-    rstride=1,
-    cstride=1,
-)
+_ALIAS = {"C_m": "capacitance"}
+x_key = _ALIAS.get(x_param, x_param)
+y_key = _ALIAS.get(y_param, y_param)
 
-# Contour projection on the floor
-z_floor = ax.get_zlim()[0]
-ax.contour(
-    X,
-    Y,
-    Z_plot,
-    levels=10,
-    zdir="z",
-    offset=z_floor,
-    cmap=cm.jet,
-    alpha=0.6,
-)
+if x_key not in PARAM_NAMES:
+    raise KeyError(f"Unknown x param {x_param!r}; available: {PARAM_NAMES}")
+if y_key not in PARAM_NAMES:
+    raise KeyError(f"Unknown y param {y_param!r}; available: {PARAM_NAMES}")
+if x_key == y_key:
+    raise ValueError("x_param and y_param must differ")
 
-ax.set_xlabel(px, fontsize=8, labelpad=2)
-ax.set_ylabel(py, fontsize=8, labelpad=2)
-ax.set_zlabel("Loss", fontsize=8, labelpad=2)
-ax.set_title(f"{px} vs {py}", fontsize=10, pad=2)
-ax.tick_params(labelsize=6)
-ax.view_init(elev=30, azim=-60)
+pi, pj = PARAM_NAMES.index(x_key), PARAM_NAMES.index(y_key)
 
-plt.tight_layout()
-# plt.savefig(
-#     f"{loss_name.lower()}_loss_landscape_3d_focus.pdf", dpi=150, bbox_inches="tight"
-# )
-plt.show()
-# print(f"Saved to {loss_name.lower()}_loss_landscape_3d_focus.png")
+# `grids` only stores pairs with the first index < second (from combinations()).
+# If the user picked the reversed order, fetch the stored grid and transpose so
+# that the plotted X axis corresponds to x_param.
+if (pi, pj) in grids:
+    g = grids[(pi, pj)]
+    X, Y, Z = g["X"], g["Y"], g["Z"]
+else:
+    g = grids[(pj, pi)]
+    X, Y, Z = g["Y"].T, g["X"].T, g["Z"].T
+
+xlabel = PARAM_LABELS[x_key]
+ylabel = PARAM_LABELS[y_key]
+
+# Clip to the same range used in the triangle grid so the 3D surface uses the
+# same perceptual scale as the overview figure.
+Z_plot = np.clip(Z, vmin, vmax_clip)
+log_norm = LogNorm(vmin=vmin, vmax=vmax_clip)
+facecolors = cm.viridis(log_norm(Z_plot))
+
+# Default-parameter anchor: the minimum visible on the actual grid.
+x0 = initial_params[_map_name_to_initial(x_key)]
+y0 = initial_params[_map_name_to_initial(y_key)]
+
+with plt.rc_context({
+    "font.family": "serif",
+    "font.size": 10,
+    "axes.labelsize": 12,
+    "axes.titlesize": 12,
+    "xtick.labelsize": 9,
+    "ytick.labelsize": 9,
+    "axes.linewidth": 0.8,
+}):
+    fig = plt.figure(figsize=(7.0, 5.5))
+    ax = fig.add_subplot(111, projection="3d")
+
+    surf = ax.plot_surface(
+        X,
+        Y,
+        Z_plot,
+        facecolors=facecolors,
+        rstride=1,
+        cstride=1,
+        linewidth=0.15,
+        edgecolor=(1, 1, 1, 0.25),
+        antialiased=True,
+        shade=False,
+    )
+
+    # Contour projection on the floor, matching the surface's log color scale.
+    z_floor = float(np.nanmin(Z_plot)) - 0.05 * (
+        float(np.nanmax(Z_plot)) - float(np.nanmin(Z_plot))
+    )
+    ax.set_zlim(z_floor, float(np.nanmax(Z_plot)))
+    contour_levels = np.geomspace(vmin, vmax_clip, 12)
+    ax.contour(
+        X,
+        Y,
+        Z_plot,
+        levels=contour_levels,
+        zdir="z",
+        offset=z_floor,
+        cmap="viridis",
+        norm=log_norm,
+        linewidths=0.6,
+        alpha=0.8,
+    )
+
+    # Drop a thin marker line from the default parameters down to the floor.
+    try:
+        from scipy.interpolate import RegularGridInterpolator
+        interp = RegularGridInterpolator(
+            (Y[:, 0], X[0, :]), Z_plot, bounds_error=False, fill_value=np.nan
+        )
+        z0 = float(interp([[y0, x0]])[0])
+        if np.isfinite(z0):
+            ax.plot(
+                [x0, x0], [y0, y0], [z_floor, z0],
+                color="black", linewidth=0.8, alpha=0.7,
+            )
+            ax.scatter(
+                [x0], [y0], [z0],
+                s=28, facecolor="white", edgecolor="black", linewidth=0.8, zorder=5,
+            )
+    except Exception:
+        pass
+    ax.scatter(
+        [x0], [y0], [z_floor],
+        s=18, facecolor="white", edgecolor="black", linewidth=0.8, zorder=5,
+    )
+
+    ax.set_xlabel(xlabel, labelpad=8)
+    ax.set_ylabel(ylabel, labelpad=8)
+    ax.set_zlabel(rf"{loss_name} loss  [mV$^2$]", labelpad=8)
+
+    # Clean pane backgrounds — white panes, subtle grid, thin spines.
+    for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
+        axis.pane.set_facecolor("white")
+        axis.pane.set_edgecolor((0.6, 0.6, 0.6, 0.6))
+        axis.pane.set_linewidth(0.6)
+        axis._axinfo["grid"].update({"linewidth": 0.4, "color": (0.8, 0.8, 0.8, 0.8)})
+
+    ax.tick_params(axis="both", which="major", pad=2, length=2.5, width=0.6)
+    ax.view_init(elev=28, azim=-55)
+    ax.set_box_aspect((1.0, 1.0, 0.65))
+
+    # Colorbar anchored on the right with log-decade ticks, matching fig. 4.
+    mappable = cm.ScalarMappable(norm=log_norm, cmap="viridis")
+    mappable.set_array(Z_plot)
+    cbar = fig.colorbar(
+        mappable, ax=ax, shrink=0.7, pad=0.2, aspect=22, extend="max"
+    )
+    lo = int(np.floor(np.log10(vmin)))
+    hi = int(np.ceil(np.log10(vmax_clip)))
+    cbar.ax.yaxis.set_major_locator(LogLocator(base=10.0, numticks=(hi - lo + 1)))
+    cbar.ax.yaxis.set_minor_locator(
+        LogLocator(base=10.0, subs=np.arange(2, 10), numticks=50)
+    )
+    cbar.ax.yaxis.set_major_formatter(LogFormatterSciNotation(base=10))
+    cbar.ax.tick_params(which="major", labelsize=9, length=3.5, width=0.6)
+    cbar.ax.tick_params(which="minor", length=2.0, width=0.5)
+    cbar.outline.set_linewidth(0.6)
+    cbar.set_label(rf"{loss_name} loss  [mV$^2$] (log scale)", fontsize=10, labelpad=8)
+
+    ax.set_title(f"{loss_name} loss landscape: {xlabel} vs {ylabel}", pad=10)
+
+    fig.tight_layout()
+    plt.savefig(
+        f"{loss_name.lower()}_loss_landscape_3d_{x_key}_{y_key}.pdf",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.show()
+    print(
+        f"Saved to {loss_name.lower()}_loss_landscape_3d_{x_key}_{y_key}.pdf"
+    )
+
+
+
