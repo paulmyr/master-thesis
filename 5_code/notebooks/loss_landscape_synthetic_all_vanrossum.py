@@ -67,12 +67,6 @@ sim_init = simulate_jaxley(
 T = np.append(T, T[-1] + dt_ms)
 print(len(T))
 
-from ADoptEX.loss import (
-    extract_experimental_features,
-    GuarinoLossConfig,
-    make_guarino_loss_fn,
-)
-
 training_config = TrainingConfig(
     optimizer="adam",
     learning_rate=0.01,
@@ -101,39 +95,18 @@ cell, data_stimuli, t_max, trainable_params = setup_trainable_cell(
 target_voltage = jnp.array(sim_init.voltage)
 stim_end_index = t_max_ms  # already 0-based in cropped trace
 
-# loss_name = 'MSE'
-# loss_fn = make_mse_loss_fn(
-#     cell=cell,
-#     data_stimuli=data_stimuli,
-#     t_max=t_max,
-#     dt_ms=data.dt_ms,
-#     exp_voltage=target_voltage,
-#     stim_end_index=data.stim_end_idx,
-#     loss_config=MSELossConfig(normalize=False, clamp_threshold=None),
-# )
-
-
-# Extract target features from experimental trace (hard spike detection)
-exp_features = extract_experimental_features(
-    voltage_trace=target_voltage,
-    dt_ms=dt_ms,
-    stim_duration_ms=stim_end_index,
-    stim_end_index=len(sim_init.voltage),
-    spike_threshold_mv=-35
-)
+# Detect spikes from target trace (binary spike train for Van Rossum distance)
+exp_spike_train = jnp.array(sim_init.spikes)
 
 loss_name = "VanRossum"
-loss_fn = make_guarino_loss_fn(
+loss_fn = make_van_rossum_loss_fn(
     cell=cell,
     data_stimuli=data_stimuli,
     t_max=t_max,
     dt_ms=dt_ms,
-    exp_features=exp_features,
-    stim_duration_ms=t_max_ms,
+    exp_spike_train=exp_spike_train,
     stim_end_index=len(sim_init.voltage),
-    loss_config=GuarinoLossConfig(
-        weight_spike_count=0.0,
-    ),
+    loss_config=VanRossumLossConfig(),
 )
 
 
