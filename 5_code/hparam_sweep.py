@@ -1,10 +1,18 @@
 """Random hyperparameter sweep for Guarino loss on synthetic ground truth.
 
-Saves (hparams, metrics) for each trial to results_hparam_sweep.csv.
-Plot heatmaps separately from the saved CSV.
+Saves (hparams, metrics) for each trial to results_hparam_sweep_<shard>.csv.
+Plot heatmaps separately from the saved CSV(s).
+
+To parallelize across terminals/machines, run with disjoint shards:
+    SHARD=0 python hparam_sweep.py
+    SHARD=1 python hparam_sweep.py
+    ...
+Each shard uses a different RNG seed and writes to its own CSV. Concatenate after:
+    pd.concat([pd.read_csv(p) for p in glob('results_hparam_sweep_*.csv')])
 """
 
 import csv
+import os
 import time
 
 import jax.numpy as jnp
@@ -23,9 +31,13 @@ config.update("jax_platform_name", "cpu")
 
 N_TRIALS = 1000
 N_EPOCHS = 50
-SEED = 42
+SEED_BASE = 42
+SHARD = int(os.environ.get("SHARD", "0"))  # disjoint RNG state per shard
+SEED = SEED_BASE + SHARD * 1_000_000
 TRAINABLE = ["C_m", "g_L", "v_reset", "v_T", "E_L", "delta_T"]
-OUT_CSV = "results_hparam_sweep.csv"
+OUT_CSV = f"results_hparam_sweep_{SHARD:02d}.csv"
+
+print(f"Running shard {SHARD} with seed {SEED} -> {OUT_CSV}")
 
 # --- Synthetic ground truth ---
 dt_ms = 0.025
