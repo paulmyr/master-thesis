@@ -2,14 +2,17 @@
 
 Saves (hparams, metrics) for each trial to results_hparam_sweep.csv.
 Plot heatmaps separately from the saved CSV.
+
+Parallelized via multiprocessing: N_WORKERS processes each handle many trials.
+Each worker pays its own JIT compile cost (once), so set N_WORKERS to your
+core count and N_TRIALS to be much larger than N_WORKERS for amortization.
 """
 
 import csv
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
-import jax
 import jax.numpy as jnp
-import jax.random as jr
 import numpy as np
 from jax import config
 
@@ -23,13 +26,14 @@ from ADoptEX.training.trainer import (TrainingConfig, setup_trainable_cell,
 
 config.update("jax_platform_name", "cpu")
 
-N_TRIALS = 10000
+N_TRIALS = 1000
 N_EPOCHS = 50
 SEED = 42
+N_WORKERS = 8
 TRAINABLE = ["C_m", "g_L", "v_reset", "v_T", "E_L", "delta_T"]
 OUT_CSV = "results_hparam_sweep.csv"
 
-# --- Synthetic ground truth ---
+# --- Synthetic ground truth (runs in main + every worker on spawn) ---
 dt_ms = 0.025
 t_max_ms = 100.0
 n = int(round(t_max_ms / dt_ms))
@@ -48,15 +52,6 @@ data = TraceData(
     spike_times=sim_gt.spike_times, stim_start_idx=int(5.0 / dt_ms),
     stim_end_idx=n, stim_current_pA=500.0,
 )
-
-# --- Sample hyperparameters + per-trial inits ---
-rng = np.random.default_rng(SEED)
-slopes = rng.uniform(0.5, 10.0, N_TRIALS)
-temps = rng.uniform(0.1, 0.5, N_TRIALS)
-betas = rng.uniform(1.0, 15.0, N_TRIALS)
-lrs = 10 ** rng.uniform(-2, 0, N_TRIALS)  # Polyak: scale factor, not absolute rate
-polyak_alphas = rng.uniform(0.5, 1.5, N_TRIALS)
-polyak_betas = rng.uniform(0.5, 1.0, N_TRIALS)
 
 
 def sample_init(rng_, gt_):
@@ -77,22 +72,17 @@ def init_distance(init_, gt_):
     return float(np.mean(dists))
 
 
-with open(OUT_CSV, "w", newline="") as f:
-    w = csv.writer(f)
-    init_cols = [f"init_{name}" for name in TRAINABLE]
-    w.writerow(["trial", "slope", "temperature", "beta", "lr",
-                "polyak_alpha", "polyak_beta", "init_dist", *init_cols,
-                "final_loss", "min_loss", "gamma", "n_spikes_sim", "elapsed_s"])
-
-    for i in range(N_TRIALS):
-        t0 = time.time()
-        init = sample_init(rng, gt)
-        cfg = TrainingConfig(
-            optimizer="polyak", learning_rate=float(lrs[i]), n_epochs=N_EPOCHS,
-            polyak_alpha=float(polyak_alphas[i]), polyak_beta=float(polyak_betas[i]),
-            surrogate_type="sigmoid", surrogate_slope=float(slopes[i]),
-            clip_to_bounds=False, use_param_transform=True, verbose=False,
-        )
+def run_trial(args):
+    """Single-trial worker function. Picklable; safe in subprocess."""
+    i, slope, temp, beta_, lr, alpha, beta_p, init = args
+    t0 = time.time()
+    cfg = TrainingConfig(
+        optimizer="polyak", learning_rate=lr, n_epochs=N_EPOCHS,
+        polyak_alpha=alpha, polyak_beta=beta_p,
+        surrogate_type="sigmoid", surrogate_slope=slope,
+        clip_to_bounds=False, use_param_transform=True, verbose=False,
+    )
+    try:
         cell, stim, t_max, params = setup_trainable_cell(
             init, current, dt_ms, cfg, TRAINABLE,
         )
@@ -101,40 +91,72 @@ with open(OUT_CSV, "w", newline="") as f:
         )
         loss_fn = make_guarino_loss_fn(
             cell, stim, t_max, dt_ms, exp_feats, data.stim_duration_ms,
-            data.stim_end_idx, temperature=float(temps[i]), beta=float(betas[i]),
+            data.stim_end_idx, temperature=temp, beta=beta_,
         )
-        try:
-            final_params, history = train_scan(loss_fn, params, cfg)
-            final_loss = float(history[-1])
-            min_loss = float(jnp.nanmin(history))
-            # Evaluate gamma at final params
-            recovered = {**init}
-            for d in final_params:
-                for k_, v in d.items():
-                    name = k_.replace("AdEx_", "").replace("capacitance", "C_m")
-                    recovered[name] = float(v.flatten()[0])
-            sim = simulate_with_current_trace(recovered, current, dt_ms, use_surrogate=False)
-            if sim.n_spikes > 0 and data.n_spikes > 0:
-                gamma = float(coincidence_factor(
-                    data.spike_times, sim.spike_times, data.stim_duration_ms, 2.0,
-                ).gamma)
-            else:
-                gamma = float("nan")
-            n_spk = sim.n_spikes
-        except Exception as e:
-            final_loss, min_loss, gamma, n_spk = float("nan"), float("nan"), float("nan"), 0
-            print(f"trial {i}: {e}")
+        final_params, history = train_scan(loss_fn, params, cfg)
+        final_loss = float(history[-1])
+        min_loss = float(jnp.nanmin(history))
+        recovered = {**init}
+        for d in final_params:
+            for k_, v in d.items():
+                name = k_.replace("AdEx_", "").replace("capacitance", "C_m")
+                recovered[name] = float(v.flatten()[0])
+        sim = simulate_with_current_trace(recovered, current, dt_ms, use_surrogate=False)
+        if sim.n_spikes > 0 and data.n_spikes > 0:
+            gamma = float(coincidence_factor(
+                data.spike_times, sim.spike_times, data.stim_duration_ms, 2.0,
+            ).gamma)
+        else:
+            gamma = float("nan")
+        n_spk = sim.n_spikes
+    except Exception as e:
+        final_loss, min_loss, gamma, n_spk = float("nan"), float("nan"), float("nan"), 0
+        print(f"trial {i}: {e}")
 
-        elapsed = time.time() - t0
-        d_init = init_distance(init, gt)
-        init_vals = [init[name] for name in TRAINABLE]
-        w.writerow([i, slopes[i], temps[i], betas[i], lrs[i],
-                    polyak_alphas[i], polyak_betas[i], d_init, *init_vals,
-                    final_loss, min_loss, gamma, n_spk, elapsed])
-        f.flush()
-        print(f"[{i+1:3d}/{N_TRIALS}] slope={slopes[i]:.2f} temp={temps[i]:.2f} "
-              f"beta={betas[i]:.1f} lr={lrs[i]:.1e} a={polyak_alphas[i]:.2f} "
-              f"b={polyak_betas[i]:.2f} d={d_init:.2f} -> loss={min_loss:.3f} "
-              f"gamma={gamma:.2f} ({elapsed:.1f}s)")
+    elapsed = time.time() - t0
+    d_init = init_distance(init, gt)
+    init_vals = [init[name] for name in TRAINABLE]
+    return (i, slope, temp, beta_, lr, alpha, beta_p, d_init, *init_vals,
+            final_loss, min_loss, gamma, n_spk, elapsed)
 
-print(f"\nDone. Results: {OUT_CSV}")
+
+if __name__ == "__main__":
+    # --- Sample all hparams + inits in main process ---
+    rng = np.random.default_rng(SEED)
+    slopes = rng.uniform(0.5, 10.0, N_TRIALS)
+    temps = rng.uniform(0.1, 0.5, N_TRIALS)
+    betas = rng.uniform(1.0, 15.0, N_TRIALS)
+    lrs = 10 ** rng.uniform(-2, 0, N_TRIALS)
+    polyak_alphas = rng.uniform(0.5, 1.5, N_TRIALS)
+    polyak_betas = rng.uniform(0.5, 1.0, N_TRIALS)
+    inits = [sample_init(rng, gt) for _ in range(N_TRIALS)]
+    args_list = [(i, float(slopes[i]), float(temps[i]), float(betas[i]),
+                  float(lrs[i]), float(polyak_alphas[i]), float(polyak_betas[i]),
+                  inits[i]) for i in range(N_TRIALS)]
+
+    init_cols = [f"init_{name}" for name in TRAINABLE]
+    header = ["trial", "slope", "temperature", "beta", "lr",
+              "polyak_alpha", "polyak_beta", "init_dist", *init_cols,
+              "final_loss", "min_loss", "gamma", "n_spikes_sim", "elapsed_s"]
+
+    t_start = time.time()
+    with open(OUT_CSV, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(header)
+        with ProcessPoolExecutor(max_workers=N_WORKERS) as pool:
+            futures = {pool.submit(run_trial, a): a[0] for a in args_list}
+            done = 0
+            for fut in as_completed(futures):
+                row = fut.result()
+                w.writerow(row); f.flush()
+                done += 1
+                i, slope, temp, beta_, lr, alpha, beta_p, d_init, *rest = row
+                min_loss = rest[len(TRAINABLE) + 1]
+                gamma = rest[len(TRAINABLE) + 2]
+                elapsed = rest[len(TRAINABLE) + 4]
+                print(f"[{done:4d}/{N_TRIALS}] trial={i:4d} slope={slope:.2f} "
+                      f"temp={temp:.2f} beta={beta_:.1f} lr={lr:.1e} "
+                      f"d={d_init:.2f} -> loss={min_loss:.3f} gamma={gamma:.2f} "
+                      f"({elapsed:.1f}s)")
+
+    print(f"\nDone. Results: {OUT_CSV}  (total wall time: {time.time() - t_start:.1f}s)")
