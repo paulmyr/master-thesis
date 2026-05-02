@@ -1,6 +1,6 @@
-"""Random hyperparameter sweep for Guarino loss on synthetic ground truth.
+"""Random hyperparameter sweep for Van Rossum loss on synthetic ground truth.
 
-Saves (hparams, metrics) for each trial to results_hparam_sweep.csv.
+Saves (hparams, metrics) for each trial to results_hparam_sweep_van_rossum.csv.
 Plot heatmaps separately from the saved CSV.
 """
 
@@ -17,10 +17,9 @@ from ADoptEX.core.data import TraceData
 from ADoptEX.core.parameters import NAUD_PARAMETERS, PARAM_BOUNDS
 from ADoptEX.core.simulation import simulate_with_current_trace
 from ADoptEX.evaluation.coincidence import coincidence_factor
-from ADoptEX.loss import extract_experimental_features, make_guarino_loss_fn
+from ADoptEX.loss import VanRossumLossConfig, make_van_rossum_loss_fn
 from ADoptEX.training.trainer import (TrainingConfig, setup_trainable_cell,
                                       train_scan)
-from hparam_sweep_van_rossum import grad_clip_norms
 
 config.update("jax_platform_name", "cpu")
 
@@ -28,7 +27,7 @@ N_TRIALS = 2000
 N_EPOCHS = 20
 SEED = 42
 TRAINABLE = ["C_m", "g_L", "v_reset", "v_T", "E_L", "delta_T"]
-OUT_CSV = "results_hparam_sweep.csv"
+OUT_CSV = "results_hparam_sweep_van_rossum.csv"
 
 # --- Synthetic ground truth ---
 dt_ms = 0.025
@@ -49,18 +48,19 @@ data = TraceData(
     spike_times=sim_gt.spike_times, stim_start_idx=int(5.0 / dt_ms),
     stim_end_idx=n, stim_current_pA=500.0,
 )
+exp_spike_train = jnp.array(sim_gt.spikes[:n])
 
 # --- Sample hyperparameters + per-trial inits ---
 rng = np.random.default_rng(SEED)
 slopes = rng.uniform(0.5, 10.0, N_TRIALS)
-temps = rng.uniform(0.01, 0.3, N_TRIALS)
-betas = rng.uniform(1.0, 10.0, N_TRIALS)
-lrs = 10 ** rng.uniform(-3, -1, N_TRIALS)  # Polyak: scale factor, not absolute rate
+tau_mss = rng.uniform(2.0, 4.0, N_TRIALS)
+weight_subs = rng.uniform(0.0, 0.3, N_TRIALS)
+lrs = 5 * 10 ** rng.uniform(-3, -2, N_TRIALS)  # Polyak: scale factor, not absolute rate
 #polyak_alphas = rng.uniform(0.5, 1.5, N_TRIALS)
 polyak_alphas = np.zeros(N_TRIALS)
 #polyak_betas = rng.uniform(0.5, 1.0, N_TRIALS)
 polyak_betas = np.zeros(N_TRIALS)
-grad_clip_norms = 10 ** rng.uniform(-1, 1, N_TRIALS)
+grad_clip_norms = 10 ** rng.uniform(-1.0, 1.0, N_TRIALS)
 #grad_clip_norms = np.zeros(N_TRIALS)
 
 
@@ -85,8 +85,8 @@ def init_distance(init_, gt_):
 with open(OUT_CSV, "w", newline="") as f:
     w = csv.writer(f)
     init_cols = [f"init_{name}" for name in TRAINABLE]
-    w.writerow(["trial", "slope", "temperature", "beta", "lr",
-                "polyak_alpha", "polyak_beta", "init_dist", *init_cols,
+    w.writerow(["trial", "slope", "tau_ms", "weight_subthreshold", "lr",
+                "polyak_alpha", "polyak_beta", "grad_clip_norm", "init_dist", *init_cols,
                 "final_loss", "min_loss", "gamma", "n_spikes_sim", "elapsed_s"])
 
     for i in range(N_TRIALS):
@@ -96,18 +96,19 @@ with open(OUT_CSV, "w", newline="") as f:
             optimizer="adam", learning_rate=float(lrs[i]), n_epochs=N_EPOCHS,
             #polyak_alpha=float(polyak_alphas[i]), polyak_beta=float(polyak_betas[i]),
             grad_clip_norm=float(grad_clip_norms[i]),
-            surrogate_type="superspike", surrogate_slope=float(slopes[i]),
+            surrogate_type="sigmoid", surrogate_slope=float(slopes[i]),
             clip_to_bounds=True, use_param_transform=False, verbose=False,
         )
         cell, stim, t_max, params = setup_trainable_cell(
             init, current, dt_ms, cfg, TRAINABLE,
         )
-        exp_feats = extract_experimental_features(
-            jnp.array(data.voltage), dt_ms, data.stim_duration_ms, data.stim_end_idx,
+        loss_cfg = VanRossumLossConfig(
+            tau_ms=float(tau_mss[i]),
+            weight_subthreshold=float(weight_subs[i]),
         )
-        loss_fn = make_guarino_loss_fn(
-            cell, stim, t_max, dt_ms, exp_feats, data.stim_duration_ms,
-            data.stim_end_idx, temperature=float(temps[i]), beta=float(betas[i]),
+        loss_fn = make_van_rossum_loss_fn(
+            cell, stim, t_max, dt_ms, exp_spike_train, data.stim_end_idx,
+            loss_config=loss_cfg, exp_voltage=jnp.array(data.voltage),
         )
         try:
             final_params, history = train_scan(loss_fn, params, cfg)
@@ -134,7 +135,7 @@ with open(OUT_CSV, "w", newline="") as f:
         elapsed = time.time() - t0
         d_init = init_distance(init, gt)
         init_vals = [init[name] for name in TRAINABLE]
-        w.writerow([i, slopes[i], temps[i], betas[i], lrs[i],
+        w.writerow([i, slopes[i], tau_mss[i], weight_subs[i], lrs[i],
                     polyak_alphas[i], polyak_betas[i], grad_clip_norms[i], d_init, *init_vals,
                     final_loss, min_loss, gamma, n_spk, elapsed])
         f.flush()
@@ -142,8 +143,8 @@ with open(OUT_CSV, "w", newline="") as f:
             print('\033[92m')
         else:
             print('\033[91m')
-        print(f"[{i+1:3d}/{N_TRIALS}] slope={slopes[i]:.2f} temp={temps[i]:.2f} "
-              f"beta={betas[i]:.1f} lr={lrs[i]:.1e} a={polyak_alphas[i]:.2f} "
+        print(f"[{i+1:3d}/{N_TRIALS}] slope={slopes[i]:.2f} tau={tau_mss[i]:.2f} "
+              f"wsub={weight_subs[i]:.2f} lr={lrs[i]:.1e} a={polyak_alphas[i]:.2f} "
               f"b={polyak_betas[i]:.2f} grad_clip={grad_clip_norms[i]:.2f} d={d_init:.2f} -> loss={min_loss:.3f} "
               f"gamma={gamma:.2f} ({elapsed:.1f}s)")
         print('\033[0m')

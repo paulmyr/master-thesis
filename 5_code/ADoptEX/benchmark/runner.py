@@ -142,6 +142,7 @@ def prepare_target_data(scenario: SyntheticScenario) -> dict:
 
     return {
         "voltage": np.array(voltage),
+        "spikes": np.array(result.spikes),
         "spike_times": result.spike_times,
         "dt_ms": scenario.dt_ms,
         "duration_ms": scenario.t_max_ms,
@@ -228,7 +229,7 @@ def _build_loss_fn(method: MethodConfig, cell, t_max, target_data):
 
         exp_spike_train = spike_train_from_voltage(
             jnp.array(target_data["voltage"]),
-            threshold_mv=0.0,
+            threshold_mv=0.,
             dt_ms=dt_ms,
         )
         return make_van_rossum_loss_fn(
@@ -249,8 +250,9 @@ def _build_loss_fn(method: MethodConfig, cell, t_max, target_data):
         )
 
         stim_duration_ms = target_data["stim_duration_ms"]
+
         exp_features = extract_experimental_features(
-            voltage_trace=jnp.array(target_data["voltage"]),
+            voltage_trace=target_data["voltage"],
             dt_ms=dt_ms,
             stim_duration_ms=stim_duration_ms,
             stim_end_index=stim_end_index,
@@ -336,6 +338,7 @@ def run_gradient(
         # Cell already exists -- just inject new initial values
         trainable_params = make_initial_trainable_params(cell, initial_params)
 
+    assert 'spikes' in target_data.keys(), "No spikes key in target data"
     # Reuse pre-built loss function or create a new one
     if loss_fn is None:
         loss_fn = _build_loss_fn(method, cell, t_max, target_data)
@@ -552,7 +555,7 @@ def _compute_nm_loss_from_traces(
 
         config = loss_config or VanRossumLossConfig()
         target_voltage = jnp.array(target_data["voltage"])
-        exp_spikes = spike_train_from_voltage(target_voltage, threshold_mv=0.0, dt_ms=dt_ms)
+        exp_spikes = spike_train_from_voltage(target_voltage, threshold_mv=-35.0, dt_ms=dt_ms)
         return van_rossum_distance(sim_spikes, exp_spikes, dt_ms, config)
 
     elif objective_type == "mse":

@@ -166,7 +166,7 @@ class ParamBounds:
 
 PARAM_BOUNDS: dict[str, ParamBounds] = {
     "C_m": ParamBounds(10.0, 240.0),
-    "capacitance": ParamBounds(180.0, 220.0),  # alias for C_m (Jaxley compartment param)
+    "capacitance": ParamBounds(10.0, 240.0),  # alias for C_m (Jaxley compartment param)
     "g_L": ParamBounds(6.0, 14.0),
     "E_L": ParamBounds(-110.0, -65.0),
     "v_T": ParamBounds(-60.0, -35.0),
@@ -174,7 +174,7 @@ PARAM_BOUNDS: dict[str, ParamBounds] = {
     "v_reset": ParamBounds(-80.0, -45.0),
     "v_threshold": ParamBounds(-20.0, 30.0),
     "tau_w": ParamBounds(20.0, 320.0),
-    "a": ParamBounds(-10.0, 3.0),
+    "a": ParamBounds(-5.0, 5.0),
     "b": ParamBounds(0.0, 65.0),
 }
 

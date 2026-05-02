@@ -349,8 +349,9 @@ class GuarinoFeatureExtractor:
         dt_ms: float,
         stim_duration_ms: float,
         stim_end_index: int,
-        temperature: float = 0.1,
-        beta: float = 10.0,
+        temperature: float,
+        beta: float,
+        validity_beta: float,
     ):
         """
         Initialize the feature extractor.
@@ -361,12 +362,17 @@ class GuarinoFeatureExtractor:
             stim_end_index: Index of stimulus end for voltage extraction
             temperature: Softmax temperature (lower = sharper approximation)
             beta: Sigmoid sharpness for spike counting masks
+            validity_beta: Sigmoid sharpness for has_first/second/third_spike
+                validity flags (gates whether timing/ISI terms are counted in
+                the loss). Kept independent of ``beta`` so the validity gate
+                can stay sharp even when the spike-selection masks are softened.
         """
         self.dt_ms = dt_ms
         self.stim_duration_ms = stim_duration_ms
         self.stim_end_index = stim_end_index
         self.temperature = temperature
         self.beta = beta
+        self.validity_beta = validity_beta
 
     def extract(self, voltage_trace: Array, spike_trace: Array) -> GuarinoFeatures:
         """
@@ -383,10 +389,9 @@ class GuarinoFeatureExtractor:
         n_spikes = soft_spike_count(spike_trace)
 
         # Validity indicators (soft) using sigmoid
-        validity_beta = 10.0
-        has_first = jax.nn.sigmoid(validity_beta * (n_spikes - 0.5))
-        has_second = jax.nn.sigmoid(validity_beta * (n_spikes - 1.5))
-        has_third = jax.nn.sigmoid(validity_beta * (n_spikes - 2.5))
+        has_first = jax.nn.sigmoid(self.validity_beta * (n_spikes - 0.5))
+        has_second = jax.nn.sigmoid(self.validity_beta * (n_spikes - 1.5))
+        has_third = jax.nn.sigmoid(self.validity_beta * (n_spikes - 2.5))
 
         # Spike times
         t_first = soft_time_to_nth_spike(
@@ -761,8 +766,9 @@ def make_guarino_loss_fn(
     stim_duration_ms: float,
     stim_end_index: int,
     loss_config: Optional[GuarinoLossConfig] = None,
-    temperature: float = 0.1,
-    beta: float = 10.0,
+    temperature: float = 0.5,
+    beta: float = 5.0,
+    validity_beta: float = 10.0,
 ):
     """
     Create a Guarino feature-based loss function for Jaxley training.
@@ -781,6 +787,9 @@ def make_guarino_loss_fn(
         loss_config: Loss configuration (weights, penalties)
         temperature: Softmax temperature for soft feature extraction
         beta: Sigmoid sharpness for spike counting
+        validity_beta: Sigmoid sharpness for has_first/second/third_spike
+            validity flags. Independent of ``beta`` so the validity gate can
+            stay sharp when spike-selection masks are softened.
 
     Returns:
         Loss function: params -> scalar loss
@@ -796,6 +805,7 @@ def make_guarino_loss_fn(
         stim_end_index=stim_end_index,
         temperature=temperature,
         beta=beta,
+        validity_beta=validity_beta,
     )
 
     def loss_fn(params):
