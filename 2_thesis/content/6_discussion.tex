@@ -1,0 +1,18 @@
+\chapter{Discussion}\label{ch:discussion}\deadline{May 8th}
+
+\itodo{Discuss Klos \& Memmesheimer 2025 (\texttt{\textbackslash cite\{Klos2025\}}) as alternative paradigm to surrogate gradients. Main points to cover:\\
+- They achieve \emph{exact} (non-surrogate) spike-time gradients by switching neuron model from \gls{LIF} to \gls{QIF}, where infinite $\dot V$ at threshold makes spike times continuously differentiable in parameters.\\
+- Their \emph{pseudospike} mechanism solves the dead-neuron problem by construction, by extending dynamics past the trial end so silent neurons still have an addressable (pseudo)spike time.\\
+- Contrast with this thesis: surrogate gradients trade exactness for generality. \gls{AdEx} has steep but \emph{finite} $\dot V$ at threshold (exponential term), so it sits between \gls{LIF} (disruptive) and \gls{QIF} (smooth). This may partly explain why surrogate-based \gls{AdEx} training behaves better than pure \gls{LIF} reports suggest --- worth flagging as a hypothesis.\\
+- Their method is not directly applicable here: requires closed-form between-spike solutions and infinite spike-initiation slope, neither of which \gls{AdEx} provides.\\
+- Implication for future work: if exactness matters more than fidelity to a specific biophysical model, switching to \gls{QIF}-family models is a viable alternative to refining surrogates.
+}
+
+\itodo{Failure mode: surrogate gradient as a biased estimator. The gradient our optimizer descends on is the exact gradient of a \emph{smoothed} version of the model (one in which the threshold step is replaced by a sigmoid of width $\sim 1/\beta$), not of the true loss. Points to cover:\\
+- The smoothed loss $\widetilde{\mathcal{L}}(\theta)$ and the true loss $\mathcal{L}(\theta)$ converge as $\beta\to\infty$, so their minima are close \emph{in the limit}, but at any finite $\beta$ the surrogate gradient is biased: it points toward minima of $\widetilde{\mathcal{L}}$, not $\mathcal{L}$.\\
+- This produces an unavoidable tradeoff (the ``dead-neuron tradeoff'' of Gygax \& Zenke 2025, \texttt{\textbackslash cite\{GygaxZenke2025\}}): sharp surrogates ($\beta\!\gtrsim\!25$) make the smoothed loss a tight approximation of the true loss but give vanishing gradients (the $\sim$0.4\,mV active window noted in our diagnosis); broad surrogates ($\beta\!\sim\!5$) give informative gradients but the smoothed loss may have minima displaced from those of the true loss.\\
+- Compounded by vanishing through time over $\sim$5000 timesteps of leak dynamics: even where the per-step surrogate is well-tuned, the product of many small backward terms decays exponentially, so the gradient direction at the parameters becomes dominated by noise.\\
+- For population-level SNN classification (where most surrogate-gradient evidence comes from) bias is averaged out across many neurons and across loss invariances; for single-neuron AdEx fitting against an exact recorded trace neither averaging mechanism is available, so the bias is more likely to bite.\\
+- Frame this as the most plausible explanation if our timing-precision results stay near $\Gamma\!\approx\!0$ despite well-behaved spike-count fitting: the optimizer is genuinely converging --- on a slightly wrong objective.\\
+- Connect back to the loss-design discussion: this is also why Van Rossum (smooth in $s(t)$ by construction) and feature losses with sigmoid-gated validity offer different bias profiles; comparing their failure modes empirically is the contribution this thesis can make even without resolving the bias problem itself.
+}

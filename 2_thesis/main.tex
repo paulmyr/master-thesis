@@ -12,6 +12,7 @@
 %% Conventions for todo notes:
 \newcommand*{\generalExpl}[1]{\todo[inline]{#1}}                
 
+
 % Language specific information (currently in English or Swedish)
 \newcommand*{\engExpl}[1]{\todo[inline, backgroundcolor=kth-lightgreen40]{#1}} %% \engExpl{English descriptions about formatting}
 \newcommand*{\sweExpl}[1]{\todo[inline, backgroundcolor=kth-lightblue40]{#1}}  %% % \sweExpl{Text på svenska}
@@ -33,6 +34,8 @@
 
 \newcommand*{\deadline}[1]{\todo[inline, backgroundcolor=purple!40]{Deadline: #1}}
 
+\newcommand*{\ttodo}[0]{{\color{red}TODO}}
+
 % Uncomment to hide specific comments, to hide **all** ToDos add `final` to
 % document class
 % \renewcommand\warningExpl[1]{}
@@ -41,7 +44,6 @@
 % For example uncommenting the following line hides the Swedish language explanations
 
 \renewcommand\sweExpl[1]{}
-
 
 \usepackage[language=english,style=ieee,citestyle=numeric-comp,sorting=none,backend=biber]{biblatex}
 \addbibresource{references.bib}
@@ -293,6 +295,7 @@ morekeywords={begin, todo, textbf, textit, texttt}
 
 \cleardoublepage
 \listoftodos
+\iwarning{Document class is set to \texttt{final}, which suppresses todos --- the list of todos will render empty in the final PDF. Either drop \texttt{final} during drafting or remove \texttt{\textbackslash listoftodos} for the final build.}
 
 \cleardoublepage
 \setcounter{page}{1}
@@ -371,6 +374,7 @@ ger
 \listoftables
 \cleardoublepage
 \lstlistoflistings\engExpl{If you have listings in your thesis. If not, then remove this preface page.}
+\iwarning{No \texttt{lstlisting} environments appear in the body --- this list will be empty. Remove unless you actually add listings.}
 \cleardoublepage
 % Align the text expansion of the glossary entries
 \newglossarystyle{mylong}{%
@@ -412,986 +416,42 @@ ger
 \itodo{Keywords}
 \itodo{Keywords swedish}
 \itodo{Keywords german}
+\iwarning{The eight \texttt{\textbackslash itodo} items above are already covered by the consolidated preamble note further down (items a--f). Pick one location and delete the other to avoid drift.}
 
 \merror{Can I change template variables? E.g. I find the figure descriptions hard to distinguish from main text, change I change the font size of figure captions?}
+\iwarning{This \texttt{\textbackslash merror} is a question-to-self about template styling, not thesis content. Resolve it (yes, you can override caption font via \texttt{caption} package's \texttt{\textbackslash captionsetup\{font=...\}}) and remove the annotation.}
+
+\itodo{Preamble issues to address (cannot annotate there directly): (a) \texttt{\textbackslash subtitle} still says ``THESIS SUB TOPIC''; (b) \texttt{\textbackslash alttitle}/\texttt{\textbackslash altsubtitle} are template Swedish placeholders; (c) Swedish + German keywords are \texttt{TODO}; (d) presentation date 2022-03-15, Zoom URL \texttt{ddddddddddd}, default address; (e) opponent ``A. B. Normal''; (f) TRITA \texttt{2022:00}; (g) duplicate (commented) glossary setup at lines 55--58 vs 122--125 --- delete the dead block; (h) commented-out \texttt{doclicense} block (CC) is dead config; (i) \texttt{XML} listing language and \texttt{\textbackslash colorbitbox} bytefield helper appear unused for a neuron-model thesis; (j) \texttt{\textbackslash sweExpl} is defined then immediately silenced via \texttt{\textbackslash renewcommand}; (k) verify \texttt{\textbackslash generalExpl}, \texttt{\textbackslash warningExpl}, \texttt{\textbackslash mtodo}, \texttt{\textbackslash deadline}, \texttt{\textbackslash ttodo}, and the \texttt{L} column type are actually used in \texttt{content/}.}
 
 % End of Abstract
 % ----------------------------------------------------------------------------------------------
 %  Content
 
-
-\chapter{Introduction}
-\label{ch:introduction}
-\deadline{May 31st, 5-10 pages}
-
-\itodo{Structure of this chapter can change, should more or less reflect the structure of whole thesis}
-
-\section{Background}
-\section{Problem}
-\section{Purpose}
-\section{Goals}
-\section{Method}
-\section{Limitations}
-\section{Overview}
+\cleardoublepage
+\input{content/1_introduction.tex}
 
 \cleardoublepage
-\chapter{Background}\label{ch:background}
-\deadline{Feb 28th, BG + RL 10-20 pages}
-\glsresetall 
-This chapter introduces the technical foundations required to understand gradient-based parameter fitting in simplified neuron models.
-We start with the \gls{AdEx} model and explain why its parameters need to be fitted (Section~\ref{sec:bg:neuron-models}).
-We then discuss the landscape of parameter tuning methods, motivating why gradient-based approaches are attractive but face a fundamental obstacle:
-the non-differentiable reset mechanism (Section~\ref{sec:bg:parameter-tuning}).
-Surrogate gradients overcome this obstacle, but introduce their own challenges --- vanishing gradients through leak dynamics and sensitivity to the surrogate shape (Section~\ref{sec:bg:surrogate-gradients}).
-Finally, even with working gradients, the loss function determines whether optimisation succeeds.
-We survey three categories of loss functions and their trade-offs for spiking models (Section~\ref{sec:bg:loss-functions}).
-
-\section{Neuron Models}\label{sec:bg:neuron-models}
-Large-scale brain models are limited in size mostly by computational feasibility.
-Detailed bio-physical models like the \gls{HH}-model can precisely predict membrane behaviour of a vast variety of neuron types.
-However, they require huge computational resources to estimate the required parameters to fit the models to experimental data.
-Simplified Neuron Models models overcome this challenge, capturing most of the sophisticated neuron behaviour with only a fraction of the computational cost, enabling large-scale simulations \cite{Gerstner2014}.
-The \gls{AdEx} model \cite{Naud2008} provides a particularly interesting balance --- it reproduces a variety of firing patterns but drastically reduces the number of necessary parameters of the model.
-This makes it a favourable model for large-scale neuron simulations \cite{Tesler2024}\mwarning{Should there be that many citations here? Mostly Textbook citations, make sure of that}.
-
-The \gls{AdEx} model improves the simpler \gls{LIF} model in two ways:
-first, it introduces exponential behaviour when initialising the spike.
-Second, the model allows for adaptation, meaning it can change spiking frequencies or post-spike refractoriness based on their firing history.
-It is defined by the equations given in \cite{Brette2005, Naud2008}:
-\begin{align}
-  C \frac{dV}{dt} &= -g_L (V - E_L) + g_L \Delta_T \exp(\frac{V - V_T}{\Delta_T}) + I - w,\label{eq:adex1}\\
-  \tau_w \frac{dw}{dt} &= a(V - E_L) - w,\label{eq:adex2}
-\end{align}
-with the following reset condition:
-\begin{align}
-  \text{if } V > 0 \text{ mV}\; \text{ then} &= \begin{cases}
-    V \rightarrow V_r,\\
-    w \rightarrow w_r = w + b.
-  \end{cases}\label{eq:adex3}
-\end{align}
-
-It describes the membrane potential over time $V(t)$ given an injected current $I(t)$.
-Equation (\ref{eq:adex1}) describes the change of potential.
-$C$ is the membrane capacitance, $g_L$ the leak conductance and $E_L$ the effective resting potential.
-We can understand $-g_L (V - E_L)$ as the leak current that slowly pulls the membrane potential towards its resting potential.
-$g_L \Delta_T \exp(\frac{V - V_T}{\Delta_T})$ models the depolarisation initialised by the fast reacting sodium channels using an exponential function,
-modelled using a driving force based on an effective threshold potential $V_T$ and a slope factor $\Delta_T$.
-$I$ is the injected current, and $w$ is the adaptation current, which is described in equation \ref{eq:adex2}.
-
-The adaptation mechanism is controlled via an adaptation current which opposes depolarisation.
-Unlike the fast membrane behaviour, this current is related to the time constant $\tau_w$, which controls the decay time.
-It is controlled by $a$ (sub-threshold adaptation) as well as $b$ (spike-triggered adaptation).
-
-Even though the number of parameters is significantly reduced compared to bio-physical \gls{HH}-type models, it still requires parameter fitting --- especially because some parameters (e.g. $a$, $b$ or $\tau_w$) do not have direct physiological counterparts (like $C$ or $g_L$).
-For \gls{AdEx} to perform as an effective tool, efficient methods for parameter optimizations are essential.
-
-The \gls{AdEx} equations (Eqs.~\ref{eq:adex1},\ref{eq:adex2}) are continuous ordinary differential equations.
-To simulate numerically, we discretise into a series of time steps $t_0, t_1 = t_0 + \Delta t, ..., T$.
-Given the state $s_t = (V_t, w_t)$ at time $t$, we compute $s_{t+1}$ using forward Euler for $V$ and exponential Euler for $w$.
-This produces a sequence of states $s_0, s_1, ..., s_T$ — the same that \gls{BPTT} (Section~\ref{sec:bg:sg:bptt}) will differentiate through.
-It is important to note that both integration method and time step size $\Delta t$ affect both simulation accuracy and gradient quality.
-
-\section{Parameter Tuning for Neuron Models}\label{sec:bg:parameter-tuning}
-A central challenge in neuroscience has been to 'identify the parameters of detailed biophysical models, such that they match physiological measurements at scale' \cite{Deistler2025} in reasonable simulation runtimes.
-The parameter space is highly non-convex, which is a challenge for any optimisation approach.
-We further dive into this problem in Sec.~\ref{sec:bg:loss:param-space}.
-The zoo of optimisation techniques is large, spanning from evolutionary algorithms \cite{VanGeit2008} to gradient descent \cite{Jones2024}, however, deciding which algorithm to use may often depend on the underlying properties of the model.
-For tuning simplified neuron models, many different approaches have been used.
-
-\subsection{Non-gradient-based Tuning}\label{sec:bg:tuning:non-gradient-based}
-Derivative free methods like Nelder-Mead have successfully been used to fit parameters.
-It has simple design principles: it maintains a simplex (geometric shape of $n+1$ vertices in $n$ dimensions) and iteratively transforms it through four operations:
-reflection, expansion, contraction and shrinkage.
-At each step, the worst vertex is replaced by a better point found through these geometric operations.
-The simplex adapts its shape to the landscape --- elongating along valleys, shrinking near minima, ending when it becomes sufficiently small.
-Parameter optimisation is well-suited in regards to low-dimensionality: neuron models don't have many parameters which is good (~5-12);
-however, it's a local optimizer.
-Simplex algorithms converge to the nearest minimum from its starting point.
-There exist no mechanism to escape local minima in non-convex landscapes, which requires lots of iterations with different starting positions.
-
-A different popular choice are \glspl{EA}:
-These models maintain a collection of candidate solutions (population, parameter sets).
-Each generation, fitness is evaluated using an objective functions.
-Fittest solution 'produce offspring' through mutation and recombination.
-Similar to the simplex algorithm, this only requires forward evaluation of the simulator.
-Multi-objective variants optimize for several objective functions simultaneously.
-This is a useful feature because for neuron fitting, multiple features (spike count, timing, frequencies, subthreshold voltage, ...) can be treated as separate objectives rather than a single objective function.
-\glspl{EA} reduce the risk of under-sampling, however, they typically require hundreds tot thousands of generations with tens to hundreds if individuals --- that needs lots of computational resources.
-
-Main advantage of these methods is that they are derivative-free: only the forward pass and objective function is evaluated.
-This makes them applicable to any model and any metric, including non-differentiable ones.
-However, the cost is sample efficiency — each candidate requires a full forward simulation, and many candidates are needed per optimization run.
-
-\subsection{Gradient-based Tuning}\label{sec:bg:tuning:gradient-based}
-Gradient-based optimisation requires computing the partial derivative $\partial L / \partial \theta$ for all trainable parameters.
-Doing this analytically is impractical and inefficient for complex simulations with thousands of timesteps.
-\gls{AD} solves this by decomposing the computation into elementary operations and applying the chain rule systematically.
-The most common method is reverse-mode \gls{AD}, also called \gls{BP}, is a particularly efficient method: 
-it creates a computational graph of operations --- each of them has to be differentiable.
-Then one backward pass yields all parameter gradients simultaneously.
-\texttt{JAX}, a high performance array computing library, implements this through function tracing and transformation (\verb|jax.grad|).
-
-\texttt{Jaxley} \cite{Deistler2025}, a newly developed framework built on top of \texttt{JAX}, uses \gls{AD} to quickly fit parameters of sophisticated biophysical models to experimental data and perform large-scale neuron simulations.
-Specifically, \texttt{Jaxley} allows to simulate multi-compartment models with complex structures (dendrites, axons), cable theory equations and \gls{HH}-type ion channels.
-It shows very promising results, matching or outperforming other state-of-the-art (e.g. genetic algorithms) in performance for small and large neuron models respectively.
-However, as previously stated, in many circumstances it still remains unfeasible to use \gls{HH}-type models for large-scale simulations.
-\texttt{Jaxley} fails to support simplified models to perform parameter tuning.
-One fundamental limitation is that simplified models are not by default automatically differentiable.
-This is a result of the reset condition in equation~\ref{eq:adex3}.
-Addressing this issues requires special treatment: surrogate gradients.
-
-\section{Surrogate Gradients}\label{sec:bg:surrogate-gradients}
-\gls{SG} were developed to adapt spiking neurons (usually using \gls{LIF} neuron models) for gradient-based training, primarily on classification tasks.
-In \gls{SNN}, typically thousands of synaptic weights are trained.
-Using a cross-entropy loss, models should perform specific tasks, e.g. image classification.
-The goal is not to match spiking behaviour of a specific neuron to experimental data, instead the model parameters are given to the used model.
-To use \gls{AdEx} for biophysical simulations, the actual model parameters ($g_L$, $a$, $b$, $\tau_w$, ...) --- each with different units and scales --- need to be learned.
-A loss function must quantify similarity between simulated and recorded spike trains.
-Simultaneously, parameters play a fundamentally different role.
-Some affect every timestep (leak), others only act at spike events (reset and adaptation variables).
-Whether \gls{SG}, which were shown to work for weight training, also enable biophysical parameter fitting (for simplified neuron models) remains an open question.
-
-Training these models on real data requires differentiating through the forward simulation.
-Because \gls{LIF}-type models are discontinuous (see reset in equation~\ref{eq:adex3}), automatic differentiation produces undefined or zero gradients.
-To overcome this issue, prior work replaced the discontinuous (Heaviside-) functions derivative with a (e.g. sigmoid) surrogate, but only for the backward pass.
-For training weights in \gls{SNN}, this performed sufficiently well.
-There exists a variety of common surrogates.
-They share the commonality that they are centred at the discontinuous point of the Heaviside-function, but differ in shape.
-To evaluate the differences between surrogate functions, we have to understand how \gls{BPTT} works.
-
-\subsection{Backpropagation Through Time}\label{sec:bg:sg:bptt}
-Compared to normal backpropagation, we have a sequence of integration steps $f(\theta, s_0, t_0) \mapsto f(\theta, s_1, t_1) \mapsto ... \mapsto f(\theta, s_T, T)$,
-where $\theta$ are the parameters, $s_t$ is the internal state (voltage $v$ and adaptation variable $w$) and $t$ describes the time.
-The loss is defined as $L = \mathcal{L}(s_0, s_1, ..., s_T)$. To compute the gradient, we unroll the recurrence into 
-\begin{equation}
-  \frac{\partial L}{\partial \theta} = \sum_{t=0}^{T} \frac{d L}{d s_t} \cdot \frac{\partial s_t}{\partial \theta}
-  \label{eq:bptt}
-\end{equation}
-where
-\begin{equation}
-  \frac{dL}{ds_t} = \frac{\partial L}{\partial s_t} + \left(\frac{\partial s_{t+1}}{\partial s_t}\right)^\top \frac{dL}{ds_{t+1}}
-  \label{eq:bptt2}
-\end{equation}
-with boundary condition $\frac{dL}{ds_T} = \frac{\partial L}{\partial s_T}$, since no future states exist beyond $T$.
-
-Because $s_t$ influences $L$ both directly (as an argument to $L$) and indirectly (by affecting $s_{t+1}$, $s_{t+2}$, ... through the recurrence),
-we must distinguish between the immediate partial derivative $\partial L/\partial s_t$ — which considers only the direct dependence — and the total derivative $dL/ds_t$, which accounts for both.
-Eq. \ref{eq:bptt2} decomposes the total derivative into these two contributions:
-the direct effect on $L$, and the indirect effect propagated backward from $s_{t+1}$.
-
-\subsection{Fundamental Problem in Deep Learning}\label{sec:bg:sg:vanishing-gradients}
-Sepp Hochreiter first identified the vanishing/exploding gradient problem \cite{Hochreiter1991}.
-The gradient chain in Eq.~\ref{eq:bptt} has the consequence that the error signal at time $t$ depends on the product of $T-t$ Jacobians.
-If the spectral radius of the matrix is continuously $<1$, this results in vanishing gradients, for radii $>1$ the opposite.
-For the AdEx neuron with leak dynamics (focusing on the voltage component) we obtain:
-
-\begin{align*}
-  \frac{\partial s_{t+1}}{\partial s_{t}} = \frac{\partial v_{t+1}}{\partial v_{t}} &= \frac{\partial v^*}{\partial v_t} + H'(v_t - v_{th}) \cdot (V_r - v^*) + H(v_t - v_{th}) \cdot \left(-\frac{\partial
-  v^*}{\partial v_t}\right)\\
-  &= (1 - H(v_t - v_{th})) \cdot \frac{\partial v^*}{\partial v_t} + (V_r - v^*) \cdot H'(v_t - v_{th}),
-\end{align*}
-where $H$ is the Heaviside-function and $v^*$ is the Euler integrated voltage (before any reset is applied).
-
-We can infer two conclusions from this equation.
-First, we can see that $H'$ (the derivative of the Heaviside function) is always 0 (or undefined), meaning the reset gradient is ignored.
-Second, in the subthreshold regime (non-spiking behaviour $H(v_t - v_{th}) = 0$), $\frac{\partial v^*}{\partial v_t}$ is dominated by the leak current.
-This leads to vanishing-gradients as visible in Fig.~\ref{fig:vanishing-gradients}.
-
-The surrogate gradient approach addresses the first problem by replacing $H'(v_t - v_{th})$ with a smooth surrogate
-$\sigma'(v_t - v_{th})$ during the backward pass only, leaving the forward dynamics unchanged:
-\begin{equation*}
-  (1 - H(v_t - v_{th})) \cdot \frac{\partial v^*}{\partial v_t} + (V_r - v^*) \cdot \sigma'(v_t - v_{th})
-\end{equation*}
-This restores a nonzero gradient pathway through spike events.
-Crucially, it does not address the second problem — gradient decay through leak dynamics persists --- regardless of the surrogate choice.
-
-The severity of this problem differs across parameters.
-Parameters that affect the continuous subthreshold dynamics (e.g. $g_L$, $E_L$) receive gradient signal at every timestep through the leak term.
-Parameters that only act through the reset mechanism are much harder to fit.
-In particular, the spike-triggered adaptation $b$ is only updated when a spike occurs (Equation~\ref{eq:adex3}: $w \rightarrow w + b$).
-Gradient information for $b$ must therefore pass through the Heaviside derivative $H'$, which is exactly the term that is zero without surrogates.
-Even with surrogates, the gradient for $b$ is limited to the few timesteps where spikes occur, while the gradient must then survive the leak decay to propagate further backward.
-Similarly, $\tau_w$ controls adaptation dynamics that are most relevant in the post-spike recovery period.
-
-\begin{figure}
-  \begin{center}
-    \includegraphics[width=0.95\textwidth]{figures/vanishing-gradients.pdf}
-  \end{center}
-  \caption{Vanishing gradients through leak dynamics. (a) Gradient magnitude decays exponentially as it propagates backward from the loss, shown for three leak conductance values
-  $g_L$. (b) Consequence for per-timestep gradient contribution: early timesteps contribute negligibly to the total gradient, while the final milliseconds dominate.
-  Computed for $g_L = 10$ nS, $C = 200$ pF, $dt = 0.025$ ms.}\label{fig:vanishing-gradients}
-\end{figure}
-
-\subsection{Surrogate gradients}\label{sec:bg:sg:surrogate-gradients}
-
-There are a variety of surrogate functions that have been proposed.
-The simplest one is the sigmoid function 
-\begin{equation}
-  \sigma'(x) = \beta \cdot \sigma(\beta x)(1 - \sigma(\beta x)).
-  \label{eq:sigmoid-surrogate}
-\end{equation}
-Other common surrogates include the exponential
-\begin{equation}
-  \sigma'(x) = \beta \cdot \exp(-\beta|x|)
-  \label{eq:exponential-surrogate}
-\end{equation}
-and SuperSpike\cite{Zenke2018}
-\begin{equation}
-  \sigma'(x) = 1/(\beta|x| + 1)^2
-  \label{eq:superspike-surrogate}
-\end{equation}
-functions.
-All are centred at the discontinuity and unimodal, but differ in tail behaviour (Figure~\ref{fig:surr_grads}).
-
-\begin{figure}
-  \begin{center}
-    \includegraphics[width=0.95\textwidth]{figures/surrogate_gradients_comparison.pdf}
-  \end{center}
-  \caption{Surrogate gradient shape comparison. (a) The Heaviside step function used in the forward pass, with zero derivative everywhere except at the discontinuity. (b) Three
-  common surrogate derivatives used in the backward pass: sigmoid, exponential, and SuperSpike. All are centered at the threshold and unimodal, but differ in peak height
-  and tail decay. The steepness parameter $\beta$ (here $\beta = 5$) controls the width of the effective gradient window.}\label{fig:surr_grads}
-\end{figure}
-
-An important hyperparameter is the steepness $\beta$:
-large $\beta$ concentrates the gradient signal in a narrow window around threshold, while small $\beta$ spreads it over a wider voltage range.
-Gygax \& Zenke \cite{Gygax2025} show that surrogate gradients do not need to be the true gradient --- it is enough to only point in a useful descent direction.
-
-We will further discuss the choice of surrogate, its steepness and how it interacts with the loss landscape in Section~\ref{}.\mtodo{update this once the section numbers are correct}
-
-\section{Loss Functions for Spiking Models}\label{sec:bg:loss-functions}
-
-Surrogate gradients allows gradients to flow backward in time, however, the loss function determines the direction of the gradient.
-A loss function, that points towards a non-spiking solution will not produce correct spiking behaviour, no matter the surrogate gradient.
-
-\subsection{Non-convex Parameter Space}\label{sec:bg:loss:param-space}
-\itodo{Include plots of parameter space.}
-It is important to note that the AdEx parameter space is highly non-convex.
-Depending on the loss function, there exist large plateaus where the gradients are (near) zero.
-Between plateaus, narrow valleys of low loss exist where parameter combinations produce correct spiking behaviour.
-Small parameter changes can cause big qualitative changes in neuron behaviour,
-namely going from spiking to non spiking or from tonic to bursting spiking behaviour.
-This means that gradient methods are sensitive to initialisation
---- starting in a non-spiking plateau or local minima provides no gradient signal to escape.
-This problem is independent of the surrogate or loss function choice and inherent to the model.
-However, different loss functions provide better gradient direction than others.
-
-\subsection{Loss function categories}\label{sec:bg:loss:categories}
-e can differentiate in three category of losses:
-\begin{enumerate}
-  \item Pointwise differences
-  \item Feature-based losses
-  \item Distance-based metrics
-\end{enumerate}
-Category one includes \gls{MSE}, \gls{MAE} and other variations.
-\gls{MSE} is defined as
-\begin{equation}\label{eq:MSE}
-    \mathcal{L}_{\text{MSE}}(\theta) = \frac{1}{T} \sum_{t=1}^{T} \left( V_{\text{sim}}(t; \theta) - V_{\text{exp}}(t) \right)^2,
-\end{equation}
-where $\theta$ denotes the trainable parameters.
-
-Usually these types of losses build a good starting point for lots of machine learning tasks, however, not in this case.
-Consider two voltage traces with identical spiking frequencies but small temporal misalignments.
-At each spike in one voltage trace, the other is in subthreshold regime.
-This leads to high pointwise differences and therefore to high pointwise losses.
-The crucial problem here is that a non spiking model would produce a smaller loss than the slightly misaligned one,
-the gradient therefore pulls the model into non-spiking behaviour (see Section~\ref{sec:}\mtodo{fix this once section labels are done}, Figure~\ref{fig:mse-training-results})
-
-The second category of loss functions are feature-based losses.
-Here we evaluate the spike trains for different metrics, e.g. the number of spikes, spiking frequency, time to first spike, mean sub-threshold voltage or many more.
-These loss functions are commonly used for parameter fitting in simplified neuron models.
-However, by default, most of these features are not in itself differentiable.
-For existing methods that use non-gradient methods like Grid Search, Nelder-Mead or Genetic Algorithms, this is irrelevant.
-When applied to gradient-based optimisations, this has to be taken into account.
-Also important to note is the fact that when different features are combined in a single loss, weighting each features contribution becomes another hyperparameter in the training process.
-
-The third category contains distance-based metrics.
-Technically speaking, a loss function is a distance metric, however, what we mean are mathematical descriptions of similarity between spike trains, rather than between raw voltage traces.
-
-The Van Rossum distance \cite{Rossum2001} convolves each spike train with a causal exponential kernel $K(t) = \exp(-t/\tau)$ and computes the $L^2$ distance between the resulting filtered traces:
-\begin{equation}\label{eq:van-rossum}
-    d_{\text{VR}}^2 = \frac{1}{\tau} \int_0^T \left( f_{\text{sim}}(t) - f_{\text{exp}}(t) \right)^2 dt
-\end{equation}\mwarning{Make sure the naming convention is the same as for MSE loss. Where it uses $d^2$ for distance, MSE uses $\mathcal{L}$}
-where $f(t) = \sum_i K(t - t_i)$ is the filtered spike train.
-The time constant $\tau$ controls the temporal precision: small $\tau$ penalises sub-millisecond timing errors (temporal coding),
-while large $\tau$ smooths over individual spikes and compares overall firing rates (rate coding).
-Because convolution and the $L^2$ norm are smooth operations, the Van Rossum distance is naturally differentiable --- no special treatment is required for the loss itself.
-
-An alternative approach is Dynamic Time Warping (DTW), which finds an optimal alignment between two time series by warping the time axis.
-Unlike pointwise losses, DTW tolerates temporal shifts by design; however, the standard DTW algorithm involves discrete minimisation operations that are not differentiable.
-Soft-DTW \cite{Blondel2018} replaces the hard minimum with a differentiable softmin relaxation, parametrised by a smoothing factor $\gamma$.
-This makes the alignment distance amenable to gradient-based optimisation, at the cost of $O(T^2)$ time and memory complexity.
-
-All three categories share one fundamental constraint: every operation in the computational path from parameters to loss must be differentiable.
-For pointwise losses, this is trivially satisfied.
-For feature-based losses, operations like spike detection and counting must be replaced with soft, differentiable approximations.
-For distance metrics operating on spike trains, the spike train itself must be represented in a differentiable form.
-This requirement ties directly back to the surrogate gradient framework introduced in Section~\ref{sec:bg:surrogate-gradients}:
-the surrogate provides a soft spike indicator $s(t) \in [0, 1]$ that can serve as input to any of these loss functions.
-
-\section{Summary}\label{sec:bg:summary}
-The AdEx model provides an efficient yet expressive neuron model, but parameters like $a$, $b$ and $\tau_w$ lack direct physiological counterparts and must be fitted through optimisation.
-Gradient-based methods are attractive due to their computational efficiency, however, the Heaviside reset mechanism creates a differentiability barrier that prevents standard automatic differentiation.
-Surrogate gradients restore gradient flow through spike events by replacing the Heaviside derivative with a smooth surrogate during the backward pass.
-Three challenges remain: the parameter space is highly non-convex, gradients still decay exponentially through the leak dynamics, and the surrogate steepness $\beta$ must be chosen carefully.
-The loss function is equally critical.
-MSE on raw voltage traces drives the optimiser towards non-spiking solutions, feature-based losses lack temporal credit assignment, and distance metrics like Van Rossum or soft-DTW offer promising alternatives but come with their own trade-offs.
-The interplay between surrogate choice and loss function design is the central challenge investigated in this work.
+\input{content/2_background.tex}
 
 \cleardoublepage
-\chapter{Related Work}\label{ch:relwork}
-
-Simplified neuron models were originally a necessity: computing resources were too limited for large-scale simulations with detailed ion-channel models.
-As hardware improved, focus shifted to biophysically detailed \gls{HH}-type models, most notably through the Blue Brain Project \cite{VanGeit2016} and the Human Brain Project.
-In recent years, however, interest in simplified models resurged, driven by two developments: the use of spiking neurons in machine learning \cite{Neftci2019} and the ambition to simulate brain-scale networks where computational efficiency remains essential \cite{Tesler2024}.
-
-\section{Parameter Estimation for Neuron Models}\label{sec:rw:param-estimation}
-
-\subsection{Derivative-free Methods}
-Simplified neuron models like the \gls{AdEx} contain parameters (e.g.\ $a$, $b$, $\tau_w$) that lack direct physiological counterparts and must therefore be estimated through optimisation.
-Van Geit et al.\ \cite{VanGeit2008} survey the landscape of automated parameter search methods for neuron models, ranging from evolutionary strategies to simulated annealing.
-
-BluePyOpt \cite{VanGeit2016} operationalised multi-objective evolutionary optimisation for neuroscience, becoming the most widely used tool for automated parameter fitting.
-It wraps the DEAP library, providing access to IBEA, NSGA-II, CMA-ES and particle swarm optimisation, and computes fitness using the eFEL (Electrophysiology Feature Extraction Library) to compare features extracted from simulated and recorded voltage traces.
-BluePyOpt treats each feature as a separate objective, enabling Pareto-front-based selection without requiring a single scalar loss function.
-However, being population-based, it requires hundreds to thousands of forward simulations per optimisation run.
-
-For the \gls{AdEx} model specifically, Mar\'in et al.\ \cite{Marin2020} used genetic algorithms and Cruz et al.\ \cite{Cruz2021} applied Teaching-Learning-Based Optimisation (TLBO) and multi-state single-agent stochastic search (MSASS) to fit \gls{AdEx} parameters to voltage-clamp recordings, demonstrating that derivative-free methods can successfully recover \gls{AdEx} parameters.
-Guarino et al.\ \cite{Guarino2025} took a different approach: they extracted eight electrophysiological features (time to first, second, third and last spike, inverse of first and last \gls{ISI}, firing frequency, and voltage at stimulus end) and performed parameter space exploration using Sobol quasi-random sequences to sample candidate models.
-Each model is ranked by the sum of relative errors across all features, with a penalty of $+3$ for missing features (e.g.\ when a non-spiking model cannot produce spike times).
-Their work demonstrates that feature-based fitting can succeed for the \gls{AdEx} model across seven neuron types and five brain regions, but relies on brute-force search rather than gradient-based optimisation and does not evaluate using the coincidence factor $\Gamma$.
-
-\subsection{Gradient-based Methods}
-Using gradient descent for parameter fitting requires that the entire computational path --- from parameters through simulation to loss --- is differentiable.
-For \gls{HH}-type models, this is inherently the case: the ion channel dynamics are described by smooth differential equations with no discontinuities.
-Jones et al.\ \cite{Jones2024} demonstrated that gradient-based methods can efficiently optimise ODE-based neuron models using automatic differentiation.
-Hertag et al.\ \cite{Hertag2011} developed an analytical approximation to the \gls{AdEx} model to speed up computations, though this sacrifices the model's full expressive power.
-
-Deistler et al.\ \cite{Deistler2025} developed \texttt{Jaxley}, a \texttt{JAX}-based simulator that enables gradient descent for biophysical models at scale.
-They fitted single-neuron models with up to 1,390 parameters and trained networks with 100,000 parameters.
-On synthetic data, gradient descent required only $\sim$9 optimisation steps (median across runs) to find parameter sets matching the ground truth, while the IBEA genetic algorithm needed a similar number of generations with ten simulations each --- making gradient descent roughly an order of magnitude more sample-efficient.
-On experimental recordings from the Allen Cell Types Database, 1,000 parallelised gradient descent runs on a GPU produced fits that closely matched recorded voltage traces.
-However, \texttt{Jaxley} operates exclusively on \gls{HH}-type models.
-Simplified models with discrete reset mechanisms (Section~\ref{sec:bg:surrogate-gradients}) break the differentiability assumption and are not supported for gradient-based fitting.
-
-\subsection{Simulation-based Inference}
-A third paradigm avoids optimisation entirely: simulation-based inference (SBI) uses neural density estimators to approximate the posterior distribution $p(\theta | \mathbf{x})$ over parameters given observed data.
-Gon\c{c}alves et al.\ \cite{Goncalves2020} developed Sequential Neural Posterior Estimation (SNPE), which trains a deep neural network on simulated data to learn the mapping from observations (or summary statistics) to the full posterior.
-Unlike point-estimate methods, SNPE captures the complete space of data-consistent parameters, including parameter degeneracies and multimodal solutions.
-It is amortised: after an expensive initial training phase, inference on new recordings is nearly instantaneous.
-Critically, SNPE treats the simulator as a black box and can therefore be applied to non-differentiable models including simplified spiking neurons.
-It comes from the same research group as \texttt{Jaxley} (Macke lab) and represents the Bayesian counterpart to the gradient-based approach.
-
-\section{Surrogate Gradients in Spiking Neural Networks}\label{sec:rw:sg-snn}
-
-Surrogate gradients were developed to enable gradient-based training in \glspl{SNN}, where the discrete spike mechanism prevents standard backpropagation.
-Neftci et al.\ \cite{Neftci2019} provide a comprehensive tutorial on the approach, covering sigmoid, exponential and piecewise-linear surrogates for training \gls{LIF}-based networks on classification tasks.
-Gerum and Schilling \cite{Gerum2021} systematically compared surrogates (sigmoid, Esser function, and others) when training \gls{LIF} neurons integrated into standard machine learning architectures via \texttt{Keras}, finding that classification performance was largely robust to the specific surrogate choice.
-Similarly, Perez-Nieves et al.\ \cite{Perez-Nieves2021} used a sigmoidal surrogate in \texttt{PyTorch} to train spiking networks on classification benchmarks, demonstrating that heterogeneous neuron parameters improve learning --- though these parameters were drawn from distributions, not fitted to data.
-
-Zenke and Ganguli \cite{Zenke2018} proposed SuperSpike, a surrogate based on $1/(\beta|x|+1)^2$, and formally analysed the vanishing gradient problem in multi-layer \glspl{SNN}.
-They showed that careful surrogate design is essential for learning in deep spiking networks, particularly for precise spike timing tasks.
-
-Recent theoretical work by Gygax and Zenke \cite{Gygax2025} provides a formal foundation for why surrogate gradients work despite not being the true gradient.
-They show that, for single neurons, surrogate gradient descent is equivalent to computing derivatives of the expected output in smoothed probabilistic models --- the surrogate derivative matches the derivative of the neuronal escape noise function.
-This equivalence breaks down in multilayer networks, where surrogate gradients remain a heuristic.
-Importantly, \gls{SNN} training has been shown to be robust to the choice of surrogate function \cite{Gygax2025}, suggesting that the exact surrogate shape matters less than providing \emph{any} non-zero gradient through spike events.
-
-All of the above work focuses on training \emph{synaptic weights} for task-based objectives (classification accuracy, spike timing).
-Whether surrogate gradients also enable fitting \emph{biophysical parameters} ($g_L$, $a$, $b$, $\tau_w$) to match experimental recordings remains unexplored.
-This is a fundamentally different problem: the parameters are heterogeneous (different units, scales, and roles), the loss must quantify spike train similarity rather than task performance, and the surrogate must provide useful gradient information for parameters that interact with the spike mechanism in qualitatively different ways (Section~\ref{sec:bg:surrogate-gradients}).
-
-\itodo{Consider adding: Bellec et al.\ 2020 (e-prop, eligibility propagation for online learning in recurrent SNNs) and Klos et al.\ 2024 (Pseudospikes, calibrated surrogates for neuron model parameters). Klos et al.\ is particularly relevant as they argue standard surrogates are poorly calibrated for parameter fitting vs.\ weight training. Check if PDFs are available and add bib entries.}
-
-\section{Benchmarking Neuron Models}\label{sec:rw:benchmarking}
-
-Comparing the quality of neuron model fits across studies requires a standardised evaluation metric.
-Jolivet et al.\ \cite{Jolivet2008} introduced the coincidence factor $\Gamma$ as 
-a measurement of the fraction of coincident spikes between a model and a reference recording within a temporal precision window $\Delta$ (typically $\Delta = 4$~ms, $2$~ms in the original paper), corrected for chance:
-\begin{equation}\label{eq:gamma}
-  \Gamma = \frac{N_{\text{coinc}} - \langle N_{\text{coinc}} \rangle}{\frac{1}{2}(N_{\text{model}} + N_{\text{data}})} \cdot \frac{1}{N_{\text{norm}}}
-\end{equation}
-where $N_{\text{coinc}}$ is the number of coincident spikes, $\langle N_{\text{coinc}} \rangle$ is the expected number of coincidences under a Poisson model (chance level), and $N_{\text{norm}}$ is a normalisation factor ensuring $\Gamma = 1$ for a perfect match.
-$\Gamma = 0$ corresponds to chance-level performance.
-
-In their benchmark, Jolivet et al.\ evaluated several simplified neuron models fitted using the Nelder-Mead simplex algorithm.
-The best-performing models --- including the \gls{AdEx} --- achieved $\Gamma \approx 0.82$--$0.83$ on held-out test data \cite{Jolivet2008}, establishing a concrete performance target for neuron model fitting.
-These results demonstrate that simplified models \emph{can} reproduce experimental spike trains with high fidelity when their parameters are fitted appropriately.
-
-The precision parameter $\Delta$ in $\Gamma$ controls the temporal tolerance for counting coincident spikes: small $\Delta$ requires near-exact spike alignment, while large $\Delta$ tolerates timing errors.
-This mirrors the role of the time constant $\tau$ in the Van Rossum distance (Section~\ref{sec:bg:loss:categories}), where small $\tau$ emphasises temporal coding and large $\tau$ emphasises rate coding.
-Both metrics parameterise the same fundamental trade-off between spike timing precision and overall firing rate agreement.
-
-\section{Loss Functions for Neuron Model Fitting}\label{sec:rw:loss}
-
-The choice of loss function is critical for any optimisation approach, but becomes especially consequential for gradient-based methods, where the loss determines not only the optimisation target but also the gradient direction.
-
-\subsection{Feature-Based Losses}
-Guarino et al.\ \cite{Guarino2025} define a loss based on the relative error between data-derived and model-derived electrophysiological features.
-Their eight features --- spike times, \gls{ISI} inverses, firing frequency and voltage at stimulus end --- capture both temporal and rate-coding properties.
-When features are missing (e.g.\ a non-spiking model cannot produce spike times), a fixed penalty is added.
-This formulation works well with derivative-free search, but the features themselves are not differentiable: spike detection requires threshold crossings, and spike counting is discrete.
-Adapting these features for gradient-based optimisation requires differentiable approximations (soft threshold, soft spike count), which we investigate in this work.
-
-\subsection{Summary Statistics and Soft-DTW}
-Deistler et al.\ \cite{Deistler2025} use two complementary loss functions for fitting \gls{HH}-type models.
-For synthetic experiments, they define four differentiable summary statistics: the mean and standard deviation of the voltage trace in two time windows (pre-stimulus and stimulus), normalised by fixed constants (8.0 and 4.0 respectively).
-The loss is the \gls{MAE} on these standardised statistics.
-This suffices for coarse parameter recovery, where the goal is matching the overall voltage distribution rather than individual spikes.
-
-For fitting to experimental recordings, they switch to soft-DTW \cite{Blondel2018}, which tolerates temporal misalignments by warping the time axis.
-To make DTW practical for long traces, they preprocess by applying a sliding window maximum (window size 50, stride 30 timesteps at $\Delta t = 0.025$~ms) and rescaling both signals to the unit interval.
-Critically, they augment the cost matrix with a temporal penalty, yielding the cost function $c(x_i, y_j) = |x_i - y_j| + |i - j|$, which prevents pathological warping paths.
-This approach produced good fits on Allen Cell Types Database recordings, but was applied exclusively to \gls{HH}-type models where no surrogate gradients are needed.
-
-\subsection{Spike Train Distance Metrics}
-The Van Rossum distance \cite{Rossum2001} provides a mathematically principled measure of spike train similarity.
-By convolving each spike train with an exponential kernel and computing the $L^2$ distance between the filtered signals (Section~\ref{sec:bg:loss:categories}), it interpolates between a coincidence detector (small $\tau$, counting non-coincident spikes) and a rate difference counter (large $\tau$, comparing overall spike counts).
-Because convolution and the $L^2$ norm are smooth, the Van Rossum distance is naturally differentiable --- making it a candidate for gradient-based optimisation.
-However, it has primarily been used as an \emph{evaluation} metric in theoretical neuroscience, not as an \emph{optimisation} objective.
-The related Victor--Purpura metric is based on edit distances (spike insertion, deletion and shifting) and is not differentiable.
-
-Existing work falls into two non-overlapping categories: derivative-free methods applied to simplified models using any loss function \cite{Guarino2025, Marin2020, Cruz2021}, and gradient-based methods applied to inherently differentiable \gls{HH}-type models \cite{Deistler2025, Jones2024}.
-No prior work systematically investigates loss function design for gradient-based optimisation of simplified neuron models that require surrogate gradients.
-
-\section{Training Stabilisation for Biophysical Models}\label{sec:rw:training-stab}
-
-Training biophysical models with gradient descent is challenging beyond the choice of loss function.
-Gradient norms can spike by orders of magnitude during action potentials, parameters have different scales and units, and the loss landscape is highly non-convex with many local minima \cite{Deistler2025}.
-
-Deistler et al.\ \cite{Deistler2025} describe several stabilisation techniques implemented in \texttt{Jaxley}.
-First, they use an inverse sigmoid transformation $T(\theta) = -\log\!\left(\frac{u - \theta}{\theta - l}\right)$ to map bounded parameters $\theta \in [l, u]$ into unconstrained space, simultaneously placing all parameters on a comparable scale.
-This eliminates gradient discontinuities at parameter bounds that arise from hard clipping.
-Second, they employ Polyak stochastic gradient descent, which normalises the update step by the gradient norm: $\text{step} = \gamma \cdot \nabla\mathcal{L} / |\nabla\mathcal{L}|^\beta$.
-By scaling with the loss value, this provides implicit learning rate decay as the optimum is approached.
-Third, they assign different optimisers to different parameter groups (e.g.\ ion channel conductances vs.\ morphological parameters), since gradient norms differ systematically across parameter types.
-Fourth, they use multilevel checkpointing to reduce the memory cost of backpropagation through long simulations, and in some experiments truncate the gradient in time to mitigate vanishing or exploding gradients.
-
-To address the non-convex landscape, Deistler et al.\ parallelise up to 1,000 gradient descent runs from different initialisations on a single GPU, selecting the best parameter set post-hoc.
-This multi-start strategy is effective because individual runs are cheap once the simulation is compiled.
-
-These techniques are available as building blocks in \texttt{Jaxley} but have only been demonstrated for \gls{HH}-type models, where gradients flow naturally through smooth ion channel dynamics.
-For simplified models with surrogate gradients, additional challenges arise: the surrogate introduces an approximation error in the gradient, adaptation parameters ($b$, $\tau_w$) receive gradient signal only through spike events, and the effective gradient window of the surrogate may not match the voltage range where parameters are most sensitive.
-Whether the same stabilisation recipe transfers to this setting is an open question that we investigate empirically.
-
-\section{Summary and Research Gap}\label{sec:rw:summary}
-
-The landscape of neuron model parameter fitting spans three paradigms.
-Derivative-free methods (\glspl{EA}, Nelder-Mead, parameter space exploration) have been successfully applied to the \gls{AdEx} model \cite{Marin2020, Cruz2021, Guarino2025}, but require many forward simulations and scale poorly to large parameter counts.
-Gradient-based methods achieve orders-of-magnitude speedups for \gls{HH}-type models \cite{Deistler2025, Jones2024}, but rely on the inherent differentiability of ion channel dynamics.
-Simulation-based inference \cite{Goncalves2020} provides full posterior distributions without differentiability requirements, but targets a different goal (uncertainty quantification) and requires a separate training phase.
-
-Surrogate gradients bridge the differentiability gap for simplified models, enabling gradient flow through discrete reset events.
-However, prior work has validated surrogates exclusively for training synaptic weights on task-based classification objectives \cite{Neftci2019, Zenke2018, Gerum2021, Perez-Nieves2021}.
-Fitting biophysical parameters to experimental recordings poses distinct challenges: heterogeneous parameters, spike train similarity losses, and vanishing gradients through leak dynamics.
-
-No prior work systematically investigates how loss function design interacts with surrogate gradient optimisation for simplified neuron models.
-This thesis addresses that gap.
+\input{content/3_related_work.tex}
 
 \cleardoublepage
-\chapter{Methodology}
-\label{ch:method}
-
-This work introduces two contributions: firstly, we implement the \gls{AdEx} model within \texttt{Jaxley}, providing both standard and surrogate gradient variants.
-The surrogate implementation can easily adopted to Jaxleys existing simplified models: \gls{LIF} and Izhikevich.
-Secondly, we use \texttt{Jaxley} to perform gradient-based optimisation.
-We investigate two?\merror{how many exactly?\\add softdtw?\\add mse?} different loss functions (Van Rossum and Feature-Based),
-analyse (hyper-) parameter sensitivity and evaluate the quality of generated fits using the coincidence factor $\Gamma$ \cite{Jolivet2008} as primary metric.
-Additionally, we implement and discuss different training stabilisation techniques.
-
-\section{Integration of Surrogate Gradients into Jaxley}
-\texttt{Jaxley} is built on top of \texttt{JAX} and leverages its automatic differentiation capabilities for gradient-based parameter optimisation.
-Neuron dynamics in \texttt{Jaxley} are defined through \texttt{Channel} classes, which specify three core methods: \texttt{update\_states()} for state variable evolution, \texttt{compute\_current()} for membrane current contributions, and \texttt{init\_state()} for initialisation of state variables.
-During simulation, \texttt{JAX} traces these functions to construct a computational graph, enabling automatic gradient computation and backpropagation.
-
-\subsection{The Differentiability Problem}
-Simplified neuron models employ a discrete reset mechanism when the membrane potential crosses a threshold.
-This reset is mathematically expressed using the Heaviside step function $H$:
-\begin{equation}
-    H(v - v_{\text{th}}) = \begin{cases} 1 & \text{if } v \geq v_{\text{th}} \\ 0 & \text{otherwise} \end{cases}
-\end{equation}
-The derivative of the Heaviside function is zero almost everywhere (and undefined at the threshold):
-\begin{equation}
-    \frac{\partial H}{\partial v} = 0 \quad \text{for } v \neq v_{\text{th}}
-\end{equation}
-This causes gradients to vanish during back-propagation through spike events, which prevents gradient-based optimisation from working.
-
-\subsection{Surrogate Gradient Approach}
-To overcome this limitation, we employ surrogate gradients \cite{Neftci2019}: the forward pass uses the original Heaviside function to maintain correct spike dynamics, while the backward pass substitutes the function with a surrogate.
-This is implemented in \texttt{JAX} using \texttt{jax.custom\_vjp}, which allows defining custom vector-Jacobian products.
-
-We implement three surrogate gradient functions, each providing different gradient characteristics:
-
-\textbf{Sigmoid surrogate:}
-\begin{equation}
-    \frac{\partial \tilde{H}}{\partial x} = \beta \cdot \sigma(\beta x) \cdot (1 - \sigma(\beta x))
-\end{equation}
-where $\sigma$ is the sigmoid function and $\beta$ controls the steepness.
-
-\textbf{Exponential surrogate:}
-\begin{equation}
-    \frac{\partial \tilde{H}}{\partial x} = \beta \cdot \exp(-\beta |x|)
-\end{equation}
-
-\textbf{SuperSpike surrogate} \cite{Zenke2018}:
-\begin{equation}
-    \frac{\partial \tilde{H}}{\partial x} = \frac{1}{(\beta |x| + 1)^2}
-\end{equation}
-
-All three surrogates are centred at the threshold ($x = v - v_{\text{th}}$).
-The hyperparameter $\beta$ controls the sharpness: higher values produce steeper gradients at the threshold,
-while lower values spread the gradient over wider voltage ranges.
-
-\subsection{Implementation Details}\label{sec:method:surrogate-gradients:implementation}
-We reformulate the conditional reset from a discrete selection:
-\begin{equation}
-    v_{\text{new}} = \begin{cases} v_{\text{reset}} & \text{if spike} \\ v & \text{otherwise} \end{cases}
-\end{equation}
-to a continuous, differentiable form:
-\begin{equation}
-    v_{\text{new}} = s \cdot v_{\text{reset}} + (1 - s) \cdot v
-\end{equation}
-where $s = \tilde{H}(v - v_{\text{th}})$ is the surrogate spike indicator, to ensure differentiability through the reset mechanism.
-This formulation allows gradients to flow through the reset operation.
-
-This approach can easily be applied to the existing \gls{LIF} (\texttt{Fire\-Surrogate}) and Izhikevich models in \texttt{Jax\-ley},
-not only to the newly implemented \gls{AdEx} model (\texttt{AdEx\-Surro\-gate}).
-
-\section{AdEx Model Implementation}\label{sec:adex_impl}
-We implement the \gls{AdEx} model as a \texttt{Jaxley} channel, following the formulation by Brette and Gerstner \cite{Brette2005} (see Equations~\ref{eq:adex1}--\ref{eq:adex3}).
-Unlike \gls{HH}-type channels that contribute currents to a shared voltage solver, simplified models like \gls{AdEx} handle voltage integration directly within their \texttt{update\_states()} method.
-We follow the implementation pattern of \cite{Deistler2025}.
-
-\subsection{Numerical Integration}
-The \gls{AdEx} model consists of two coupled differential equations requiring different numerical treatment:
-
-\textbf{Adaptation current $w$:}
-Equation~\ref{eq:adex2} is a linear dynamic system in $w$, allowing the use of exponential Euler integration.
-It has the analytical solution
-\begin{equation}
-  w(t+\Delta t) = w(t) \cdot e^{-\Delta t / \tau_w} + a(V - E_L)(1 - e^{-\Delta t / \tau_w})
-\end{equation}\label{eq:adaptation-current-integration}
-which gives increased numerical stability compared to e.g. forward euler methods.
-
-\textbf{Membrane potential $V$:}
-The exponential term in Equation~\ref{eq:adex1} makes this equation nonlinear, requiring forward Euler integration:
-\begin{equation}
-    V(t + \Delta t) = V(t) + \Delta t \cdot \frac{dV}{dt}
-\end{equation}
-To prevent numerical overflow from the exponential spike mechanism, we clamp the argument:
-\begin{equation}
-    \exp\left(\frac{V - V_T}{\Delta_T}\right) \rightarrow \exp\left(\min\left(\frac{V - V_T}{\Delta_T}, 10\right)\right)
-\end{equation}
-
-\subsection{Spike Detection and Reset}
-After each integration step, we check for threshold crossing ($V > v_{\text{threshold}}$).
-If the threshold is crossed, we apply the reset conditions from Equation~\ref{eq:adex3}.
-For standard \texttt{LIF}, \texttt{AdEx} or \texttt{Izhikevich}, this uses \texttt{jax.lax.select()} for conditional assignment.
-In the differentiable variants, we use the continuous formulation described in Section~\ref{sec:method:surrogate-gradients:implementation} for both $V$ and $w$:
-\begin{align}
-    V_{\text{new}} &= s \cdot V_r + (1 - s) \cdot V, \\
-    w_{\text{new}} &= s \cdot (w + b) + (1 - s) \cdot w,
-\end{align}
-where $s: V\rightarrow [0,1]$ is the surrogate of the Heaviside function.
-
-\subsection{Model Parameters}
-Table~\ref{tab:adex_params} summarises the \gls{AdEx} parameters and their default values.
-Some parameters have direct physiological counterparts (e.g., $C_m$ or $E_L$) and could technically be measured.
-However, to accurately reproduce neuron spiking behaviour, values can significantly diverge from bio-physical plausible value ranges.
-This is expected and accepted when using simplified models, however, increases the demand of fitting strategies.
-
-\begin{table}[t]
-\centering
-\caption{\gls{AdEx} model parameters and default values.}
-\label{tab:adex_params}
-\begin{tabular}{lllll}
-\toprule
-\textbf{Parameter} & \textbf{Symbol} & \textbf{Default} & \textbf{Unit} & \textbf{Trainable} \\
-\midrule
-Membrane capacitance & $C$ & 200 & pF & Yes\\
-Leak conductance & $g_L$ & 10 & nS & Yes\\
-Leak reversal & $E_L$ & -70 & mV & Yes \\
-Threshold potential & $V_T$ & -50 & mV & Yes\\
-Slope factor & $\Delta_T$ & 2 & mV & Yes\\
-Reset potential & $V_r$ & -58 & mV & No \\
-Detection threshold & $v_{\text{threshold}}$ & 0 & mV & No \\
-Adaptation time constant & $\tau_w$ & 30 & ms & Yes$^*$\\
-Subthreshold adaptation & $a$ & 2 & nS & Yes$^*$ \\
-Spike-triggered adaptation & $b$ & 0 & pA & Yes$^*$ \\
-Stimulation current & $I$ & 500 & pA & No \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-More on trainability of the parameters in section ~\ref{} \itodo{Add result section}
-
-\subsubsection{Point-Neuron Geometry Bridge}\label{sec:geometry-bridge}
-
-The \gls{AdEx} model is a point neuron defined with absolute units ($C_m$ in pF, $g_L$ in nS, currents in pA).
-Jaxley, however, is designed for geometry-aware biophysical simulations and operates with specific capacitance ($\mu$F/cm$^2$), current densities ($\mu$A/cm$^2$), and compartment surface areas.
-To bridge this mismatch, we assign a fixed fictitious cylindrical geometry with surface area
-$A = 100\;\mu\text{m}^2$ (radius $= 1\;\mu$m, length $= 50/\pi\;\mu$m) and store the absolute capacitance $C_m$ (in pF) directly in Jaxley's \texttt{capacitance} parameter.
-Why does this work?
-As stated in \ref{sec:adex_impl}, there are two different options on how voltage equations are solved in \texttt{Jaxley}: \texttt{update\_states} and \texttt{compute\_current}.
-Since \texttt{compute\_current} is set to 0, all internal dynamics are handled entirely in \texttt{update\_states}, which computes
-$\mathrm{d}V/\mathrm{d}t = (-I_\text{leak} + I_\text{exp} - w) / C_m$
-in point-neuron units (pA\,/\,pF\,$=$\,mV/ms).
-This way, there is no double integration.
-However, external current stimulation is passed into the channel by \texttt{Jaxley's} \texttt{convert\-\_point\-\_process\-\_to\-\_distributed}.
-$I_\text{nA} / A \times 10^5\;[\mu\text{A/cm}^2]$.
-With $A = 100\;\mu\text{m}^2$ this simplifies to $I_\text{nA} \times 1000 = I_\text{pA}$ (numerically).
-The voltage solver then divides by \texttt{capacitance}: $I_\text{pA}\,/\,C_m\;[\text{mV/ms}]$, which is in correct point-neuron units.
-
-Importantly, \textbf{$C_m$ is trainable.}
-Because the geometry is fixed, changing $C_m$ during optimisation only affects the two divisions described above --- exactly the physical role of membrane capacitance.
-Therefore no geometry recalculations are needed.
-Conversion complexity is reduced to a simple unit change: $I_\text{nA} = I_\text{pA}\,/\,1000$, no parameter-dependent scaling is required.
-
-\subsection{Implementation Verification}\label{sec:verification}
-\begin{figure*}
-  \begin{center}
-    \includegraphics[width=\textwidth]{figures/adex_comparison_combined.pdf}
-  \end{center}
-  \caption{Left to right: tonic, adaptation and original parameters.
-Tonic and adaptation parameters refer to the parameters provided by \cite{Naud2008}, original parameters are the parameters used in the original AdEx paper \cite{Brette2005}.
-Top row shows the simulated voltage traces.
-Interesting to note is that when the threshold is reached, the voltage is reset in the same time step.
-This behaviour needs to be treated when thinking about loss functions.
-Second row displays the adaptation current $w$.
-Last row compares the spike timings between \texttt{Brian2} and \texttt{Jaxley}.
-We expect minor numerical differences, mainly to the fact that different integration methods are used.}\label{fig:brian_comparison}
-\end{figure*}
-
-To verify the correctness of our \gls{AdEx} implementation, we compare simulation outputs against Brian2 \cite{Stimberg2019}, a widely-used reference simulator for spiking neural networks.
-
-\subsubsection{Comparison Setup}
-Both simulators are configured identically:
-\begin{itemize}
-    \item Time step: $\Delta t = 0.01$ ms
-    \item Simulation duration: 500 ms
-    \item Stimulation duration: 400 ms
-    \item Initial conditions: $V(0) = V_r$, $w(0) = 0$
-\end{itemize}
-
-\subsubsection{Test Cases}
-We evaluate three parameter configurations from Naud et al.\ \cite{Naud2008} that produce distinct firing patterns:
-
-\textbf{Tonic spiking}:\\
-Regular spiking without spike-frequency adaptation, serving as a baseline case.
-The parameters are the default parameters (see \ref{tab:adex_params}).
-
-\textbf{Adaptation}:\\
-Strong spike-triggered adaptation with slow decay, producing decreasing firing rates over time.
-The parameters used are
-$C_m = 200$,
-$g_L = 12$,
-$E_L = -70$,
-$v_T = -50$,
-$\Delta_T = 2$,
-$v_r = -58$,
-$v_{\text{threshold}} = 0$,
-$\tau_w = 300$,
-$a = 2$,
-$b = 60$,
-$I = 500$.
-
-\textbf{Original parameters} \cite{Brette2005}:\\
-The original parameter set from Brette and Gerstner, demonstrating combined adaptation mechanisms.
-The parameters used are
-$C_m = 281$,
-$g_L = 30$,
-$E_L = -70.6$,
-$v_T = -50.4$,
-$\Delta_T = 2$,
-$v_r = -70.6$,
-$v_{\text{threshold}} = 20$,
-$\tau_w = 144$,
-$a = 4$,
-$b = 80.5$,
-$I = 2500$.
-
-\subsubsection{Comparison Metrics}\label{sec:comparison-metrics}
-We assess implementation correctness through:
-\begin{itemize}
-  \item \textbf{Visual comparison:} Overlay of voltage traces from both simulators (Figure~\ref{fig:brian_comparison}).
-  \item \textbf{Spike count:} Both implementations produce identical spike counts for all test configurations.
-  \item \textbf{Spike timing:} Maximum absolute difference in spike times
-    $$\max_i |t_i^{\text{Jaxley}} - t_i^{\text{Brian2}}| < 1\text{ms.}$$
-\end{itemize}
-
-\section{Parameter Optimisation Evaluation}\label{sec:param_opt}
-\ierror{Change this to Parameter Optimisation, make Evaluation it's own subsection}
-\itodo{Introduce the testing framework to evaluate different loss functions, algorhithms, maybe hyperparameter optimization etc. etc.}
-
-To evaluate the effectiveness of gradient-based optimisation with surrogate gradients, we fit \gls{AdEx} model parameters to experimental voltage recordings.
-
-\subsection{Dataset}\label{sec:data-set}
-We use intracellular recordings from striatal projection neurons provided by Johansson and Silberberg \cite{Johansson2020}.
-The dataset contains voltage traces from four distinct striatal neuron types, recorded under current-clamp conditions.
-However, we only used a single trace\footnote{Files can be found \href{https://github.com/a1eko/humanspn/tree/df6ec55178c81e64fdcf4ae79aaa1872458c621f/models/optimisations/mCP-dspn-e150917_c6_D1-manimal_1_n24_04102017_cel1/expdata}{here}.
-Voltage file: \texttt{ECBL\_IDthresh\_ch5\_553.dat}
-Current file: \texttt{ECBL\_IDthresh\_ch4\_553.dat}}, mainly due to time constraint.
-This is a serious limitation and will be addressed in future work.
-\ierror{rewrite this!}
-
-\subsection{Optimisation Setup}\label{sec:optimization-setup}
-We optimise the following subset of \gls{AdEx} parameters: $\{g_L, E_L, V_T, a, b, \tau_w, v_{\text{reset}}\}$.
-Parameters $\{C_m, \Delta_T, v_{\text{threshold}}$ were fixed.
-Initial parameters are given in Table \ref{tab:initial-params}.
-
-We evaluated two different loss functions: \gls{MSE} and a differentiable version of a feature based loss developed by Guarino et al.\cite{Guarino2025}, which we will name Guarino loss for the remaining report.
-Detailed hyperparameters can be found in Table \ref{tab:training-params}, however, most parameters are chosen arbitrary.
-No extensive hyperparameter tuning was conducted \mwarning{Maybe do this now? How extensive should I be? This should probably be it's own subsection}.
-We plan on revising this in future work.
-
-\begin{table}[t]
-\centering
-\caption{Training hyperparameters for AdEx optimization}
-\label{tab:training-params}
-\begin{tabular}{lcc}
-\toprule
-\textbf{Parameter} & \textbf{MSE} & \textbf{Guarino} \\
-\midrule
-\multicolumn{3}{l}{\textit{Optimization}} \\
-Optimizer & Adam & Adam \\
-Learning rate & 0.1 & 0.1 \\
-Gradient clipping (global norm) & 2.0 & 2.0 \\
-Number of epochs & 500 & 500 \\
-\midrule
-\multicolumn{3}{l}{\textit{Surrogate Gradient}} \\
-Surrogate type & sigmoid & sigmoid \\
-Surrogate slope & 25.0 & 25.0 \\
-\midrule
-\multicolumn{3}{l}{\textit{Loss-Specific Parameters}} \\
-Normalize & False & --- \\
-Temperature ($\tau$) & --- & 0.3 \\
-Beta ($\beta$) & --- & 10.0 \\
-Missing feature penalty & --- & 3.0 \\
-\midrule
-\multicolumn{3}{l}{\textit{Guarino Feature Weights}} \\
-$w_{t_\text{first}}$ & --- & 5.0 \\
-$w_{t_\text{second}}$ & --- & 3.0 \\
-$w_{t_\text{third}}$ & --- & 2.0 \\
-$w_{t_\text{last}}$ & --- & 1.0 \\
-$w_{\text{inv\_first\_ISI}}$ & --- & 2.0 \\
-$w_{\text{inv\_last\_ISI}}$ & --- & 1.0 \\
-$w_{\text{firing\_freq}}$ & --- & 1.0 \\
-$w_{V_\text{stim\_end}}$ & --- & 0.5 \\
-\midrule
-\multicolumn{3}{l}{\textit{Simulation}} \\
-Max stimulus duration & \multicolumn{2}{c}{500\,ms} \\
-Spike threshold & \multicolumn{2}{c}{$-20$\,mV} \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsection{Evaluation Metrics}\label{sec:evaluation-metrics}
-We assess optimisation performance through:
-\begin{itemize}
-    \item Visual comparison of fitted vs.\ experimental traces
-    \item Coincidence Factor for Spike Train Evaluation
-    \item \itodo{wtime? runtime? iterations?}
-    \item \itodo{Other qualatative metrics?}
-\end{itemize}
-
-The \textbf{Coincidence Factor for Spike Train Evaluation $\Gamma$} measures spike timing prediction quality, normalized by chance level.
-It is given by
-\begin{equation}
-   \Gamma = \frac{N_{coinc} - \langle N_{coinc} \rangle}{0.5(N_{data} + N_{model})} \cdot \frac{1}{1 - 2f\Delta}
-  \label{eq:coincidence-factor}
-\end{equation}
-where $N_{coinc}$ describe coincidences within $\pm\Delta$ (default 2ms)
-and $f$ is the model firing rate.
-
-In other words, it describes how good it compares to a random firing pattern. $\Gamma = 1$ means perfect prediction whereas $\Gamma = 0$ is the same as chance level.
-$\Gamma < 0$ therefore means it behaves worse than chance.
-
-Jolivet et al. achieved a $\Gamma$ value of $\approx 0.82-0.83$ for their well-fitted AdEx models.
-We use this to compare our fitted parameters.
-\ierror{Extend this with future work}
-
-\section{Loss Functions}\label{sec:loss}
-
-\mwarning{Could be Part of the Parameter optimization headline}
-
-\subsection{MSE}\label{sec:mse-loss}
-Our initial approach was to use \gls{MSE} as a loss function.
-
-We were not able to achieve any sensible results using this loss function.
-Since other works mainly use feature-based loss functions, we implemented one as well.
-
-\itodo{Expand MSE failure analysis with implementation details:}
-\begin{itemize}
-  \item Added spike peak injection: $V_{\text{out}}(t) = s(t) \cdot V_{\text{peak}} + (1 - s(t)) \cdot V(t)$ where $s(t)$ is the soft spike indicator --- makes spiking vs.\ non-spiking visible in the loss; differentiable through the spike indicator
-  \item Added optional voltage clamping: ignore voltage values above a threshold to reduce spike-mismatch artifacts
-  \item Even with these additions, MSE still drives toward subthreshold solutions: the loss is dominated by the large squared errors from temporal spike misalignments, and the gradient points toward ``flatten everything'' rather than ``shift spikes''
-\end{itemize}
-
-\subsection{Dynamic Time Warping}
-\itodo{Implementation of dynamic time warping, then write this section. Cover:}
-\begin{itemize}
-  \item Soft-DTW: differentiable relaxation of DTW via softmin with smoothing parameter $\gamma$; implemented using \texttt{jax.lax.scan} for JIT-compilable recurrence
-  \item Combined loss: weighted sum of soft-DTW distance + MAE on voltage traces
-  \item $O(T^2)$ memory --- downsample long traces to \texttt{max\_length} (default 2000) before computing
-  \item Planned preprocessing (roadmap item 5): sliding window maximum, rescale to $[0, 1]$, temporal penalty $\lambda |i - j|$ in cost matrix (following Deistler et al.)
-\end{itemize}
-
-\itodo{Add implementation details and results from our soft-DTW work:}
-\begin{itemize}
-  \item Implemented vectorized anti-diagonal scan for the DTW recurrence matrix --- computes all cells on the same anti-diagonal in parallel using \texttt{jax.lax.scan}; $\sim$300x speedup at $N=100$ (94\,ms $\to$ 0.3\,ms per call); $N=2000$ usable at $\sim$164\,ms for gradient computation
-  \item \texttt{SoftDTWLossConfig}: $\gamma_{\text{sdtw}}=1.0$, $w_{\text{dtw}}=1.0$, $w_{\text{mae}}=0.5$, normalization, optional spike peak injection
-  \item Softmin uses \texttt{custom\_vjp} with \texttt{@functools.lru\_cache} on $\gamma$ to ensure JIT cache reuse
-  \item Used in multi-stage experiment (Stage 2 after Guarino): parameters barely moved ($g_L$: 11.19 $\to$ 11.18), $\Gamma$ unchanged at 0.036 --- suggests that on raw voltage traces, subthreshold dynamics dominate and the DTW alignment signal for spikes is too weak
-  \item Preprocessing (sliding window max, rescaling, temporal penalty) from Deistler et al.\ not yet implemented --- this may address the subthreshold dominance problem
-\end{itemize}
-
-\subsection{Feature-Based Loss}\label{sec:feature-loss}
-Simplified neuron models are usually not required to perfectly imitate the voltage trace of a neuron.
-Their main requirement is to faithfully replicate the firing behaviour.
-Rather than comparing raw voltage traces, Guarino et al.~\cite{Guarino2025} proposed a loss function based on electrophysiological features:
-To capture the essential characteristics of a neuron, they identified:
-\begin{itemize}
-    \item \textbf{Spike timing:} time to first ($t_1$), second ($t_2$), third ($t_3$), and last spike ($t_{\text{last}}$),
-    \item \textbf{Interspike intervals:} inverse of first ISI ($\frac{1}{\text{ISI}_1}$) and last ISI ($\frac{1}{\text{ISI}_{\text{last}}}$),
-    \item \textbf{Firing rate:} mean firing frequency over the stimulus duration,
-    \item \textbf{Subthreshold behaviour:} membrane voltage at stimulus end ($V_{\text{stimend}}$).
-\end{itemize}
-
-The loss is computed as a weighted sum of relative errors:
-\begin{equation}\label{eq:guarino}
-    \mathcal{L}_{\text{Guarino}} = \sum_i w_i \cdot \frac{|f_i^{\text{sim}} - f_i^{\text{exp}}|}{|f_i^{\text{exp}}| + \epsilon}
-\end{equation}
-where $f_i^{\text{sim}}$ and $f_i^{\text{exp}}$ denote simulated and experimental feature values respectively, and $w_i$ are feature-specific weights.
-When a feature is present in the experimental data but absent in the simulation (e.g., the experimental trace has three spikes but the simulation produces only one),
-a fixed penalty is added to encourage the optimizer to produce the correct number of spikes.
-
-This feature-based formulation addresses the spike timing sensitivity problem inherent to MSE:
-small temporal misalignments no longer produce catastrophic loss values, as long as the overall firing pattern---captured by the features---remains similar.
-
-\subsection{Differentiable Feature-Based Loss}\label{sec:diff-feature-loss}
-The feature-based loss requires extracting spike times and counts from voltage traces.
-Standard implementations use hard threshold crossings, which are non-differentiable.
-To enable gradient-based optimization, we developed soft approximations of the feature extraction operations.
-
-The core idea is to replace discrete spike detection with continuous values.
-The AdExSurrogate channel outputs a soft spike indicator $s(t) \in [0, 1]$ at each time step.
-The soft spike count becomes simply $N_{\text{spikes}}^{\text{soft}} = \sum_{t} s(t)$.
-
-For spike timing, we use cumulative sums to identify when the $n$-th spike occurs and compute a weighted average over time.
-Similarly, ISI features are derived from the difference between consecutive soft spike times.
-Features that require a minimum number of spikes (e.g., ISI needs at least two spikes) are weighted by soft validity flags that smoothly transition based on the spike count.
-
-The soft approximations introduce two hyperparameters: a temperature $\tau$ that controls how sharp the spike selection is, and a sigmoid steepness $\beta$ for the masking operations.
-We used $\tau = 0.3$ and $\beta = 10.0$ based on initial experiments.
-
-We note that this differentiable feature extraction is a working implementation that has not been thoroughly validated.
-Due to time constraints, we did not perform extensive testing of the soft approximations against their hard counterparts, nor did we systematically tune the hyperparameters.
-The approach produces gradients and enables optimization, but the accuracy of the soft features compared to exact values remains to be studied in future work.
-
-\subsection{Van Rossum Distance}\label{sec:van-rossum-loss}
-\itodo{Write Van Rossum distance loss section. Cover:}
-\begin{itemize}
-  \item Van Rossum distance \cite{Rossum2001}: convolves spike trains with causal exponential kernel $K(t) = \exp(-t/\tau)$, then computes L2 distance: $d_{\text{VR}}^2 = \frac{\Delta t}{\tau} \sum_t (f_{\text{sim}}(t) - f_{\text{exp}}(t))^2$
-  \item Naturally differentiable: convolution (\texttt{jnp.convolve}) and squared differences are smooth; no surrogate needed for the loss itself
-  \item Kernel built with truncation at $5\tau$ by default
-  \item For the simulated side: uses the soft spike trace $s(t) \in [0,1]$ directly from the surrogate output --- gradients flow from loss through spike indicator to model parameters
-  \item For the experimental side: uses hard threshold rising-edge detection to produce binary spike train
-  \item $\tau$ hyperparameter controls temporal precision: small $\tau$ (e.g.\ 2\,ms) penalises sub-millisecond timing errors; large $\tau$ (e.g.\ 50\,ms) compares overall firing rates
-  \item Unlike MSE: operates on spike trains, not raw voltage --- insensitive to subthreshold shape
-  \item Unlike Guarino: provides temporal credit assignment --- gradient points toward correcting individual spike times
-  \item Optional subthreshold MAE term with voltage clamping at $-40$\,mV to also capture resting potential fit
-\end{itemize}
-
-\iwarning{I deleted the chapter for implementation. I think it's better suited as an integrated part of the methoodology. Be careful to be explicit and detailed on how things are implemeted!}
-
-\section{Training Stabilization}\label{sec:training-stabilization}
-\itodo{Describe the training stabilization techniques we implemented and plan to implement. Based on Deistler et al.\ training recipe and our roadmap:}
-
-\begin{itemize}
-  \item \textbf{Problem}: Training is unstable --- gradient norms spike from $\sim$10 to $10^8$, loss is non-monotonic, optimizer gets catapulted out of good basins
-  \item \textbf{Gradient clipping} (implemented): cap gradient L2 norm via \texttt{optax.clip\_by\_global\_norm}; first-line defense against exploding gradients; composable with any optimizer via \texttt{optax.chain()}
-  \item \textbf{Learning rate schedules} (implemented): cosine decay and exponential decay; high LR early for fast convergence, low LR later to avoid overshooting good basins
-  \item \textbf{Polyak gradient normalization} (implemented): update rule $\theta \leftarrow \theta - \eta \cdot L^\alpha \cdot \nabla L / \|\nabla L\|^\beta$; eliminates gradient magnitude variation entirely; loss-scaled LR provides implicit decay as loss decreases; Deistler et al.'s primary optimizer for biophysical models; uses \texttt{optax.inject\_hyperparams(optax.sgd)} for per-step LR mutation; incompatible with gradient clipping and LR schedules (replaces both)
-  \item \textbf{Sigmoid parameter transformations} (planned): replace hard clipping with smooth bijection $\mathbb{R} \to [\text{lower}, \text{upper}]$ via \texttt{SigmoidTransform}; optimizer works in unconstrained space; eliminates gradient discontinuities at parameter bounds where clipping kills gradients
-  \item \textbf{Soft-DTW preprocessing} (planned): sliding window maximum, rescaling to $[0, 1]$, temporal penalty $\lambda |i - j|$ in cost matrix to prevent pathological warping alignments; following Deistler et al.'s recipe
-  \item \textbf{Per-parameter-group learning rates} (planned): different AdEx parameters have vastly different scales (conductances $\sim$1--100\,nS, time constants $\sim$1--1000\,ms, voltages $\sim -80$ to $+20$\,mV); single LR means one parameter type dominates; \texttt{TypeOptimizer} applies separate LRs per parameter name
-  \item \textbf{Multi-start optimization} (planned): highly non-convex parameter space with many local minima; run $N$ parallel optimizations from different starting points, select best; Deistler et al.\ use 1000 parallel runs via \texttt{jax.vmap}
-  \item \textbf{Truncated BPTT} (planned, lowest priority): limit gradient propagation to windows of $N$ timesteps to prevent gradient explosion over long ($>$2000 step) simulations; uses \texttt{nested\_checkpoint\_scan} from Jaxley
-\end{itemize}
-
-\itodo{Add diagnosis of training failures and root causes identified after implementing items 1--3:}
-\begin{itemize}
-  \item After implementing gradient clipping, LR schedules, and Polyak normalization, training still produces $\Gamma \approx 0$ (chance level spike timing)
-  \item \textbf{Root cause 1 --- Surrogate gradient too narrow}: default $\beta=25.0$ gives $\sim$0.4\,mV effective gradient window (0.4\% of voltage range); literature (Gygax \& Zenke 2025 \cite{Gygax2025}) recommends $\beta \approx 5$--$10$; we switched to $\beta=5.0$ in later experiments
-  \item \textbf{Root cause 2 --- Dead zone between exp clamp and threshold}: $v_{\text{threshold}}=35$\,mV but exponential term clamps at $\sim -10$\,mV; 45+\,mV gap with zero gradient from both dynamics and surrogate; fix: lower $v_{\text{threshold}}$ to $\sim 0$\,mV (adopted as new default)
-  \item \textbf{Root cause 3 --- Vanishing gradients through time}: $\sim$5000 timesteps with leak dynamics ($g_L/C$ multiplied per step) causes exponential gradient decay; standard BPTT vanishing gradient problem
-  \item \textbf{Root cause 4 --- Hard parameter clipping kills gradients at bounds}: \texttt{jnp.clip()} after each step wastes gradient when parameters hit bounds; fix: sigmoid reparameterization (not yet implemented)
-  \item \textbf{Root cause 5 --- Items 1--3 only fix magnitude}: gradient clipping, LR schedules, Polyak cannot help when gradients are zero or point toward non-spiking solutions
-  \item \textbf{Root cause 6 --- Loss function gaps}: MSE $\to$ non-spiking solutions; Guarino $\to$ no temporal credit assignment; DTW on raw voltage $\to$ subthreshold dominated; Van Rossum $\to$ promising but not yet tested in training loop
-\end{itemize}
-
-\itodo{Add ``return best'' and ``C\_m trainable'' features:}
-\begin{itemize}
-  \item \texttt{return\_best}: when enabled, returns parameters from the lowest-loss epoch rather than the final epoch; important because loss is non-monotonic and optimizer can be catapulted out of good basins
-  \item $C_m$ made optionally trainable: refactored to use Jaxley's native \texttt{capacitance} parameter; user can opt in by adding \texttt{"C\_m"} to trainable parameter list; not in default set because $C_m$ has a direct physiological counterpart (measurable)
-\end{itemize}
-
-\itodo{Add experimental results summary for the training experiments we ran:}
-\begin{itemize}
-  \item \textbf{Experiment 1 --- Guarino + Polyak (250 epochs, $\beta=5.0$)}: correct spike count (13/13) but $\Gamma = -0.030$; parameters converged ($g_L$: 12$\to$6.57, $a$: 2$\to$0.045); training time 111.8\,s ($\sim$447\,ms/epoch)
-  \item \textbf{Experiment 2 --- Multi-stage curriculum (Guarino $\to$ soft-DTW+spike peaks)}: Stage 1 (200 epochs, 4 params): $\Gamma = 0.036$; Stage 2 (100 epochs, soft-DTW): parameters barely moved ($g_L$: 11.19$\to$11.18), $\Gamma$ unchanged; soft-DTW did not improve timing
-  \item \textbf{Experiment 3 --- Multi-start (10 random starts, 50 epochs burn-in)}: high variance across starts (best loss 23.94 vs.\ worst 83.83); continued best start for 200 more epochs: 12 spikes (target 13), $\Gamma = -0.110$; different starting region leads to different basin but still fails on timing
-  \item \textbf{Loss landscape analysis}: 28 parameter-pair grid sweep (20$\times$20 = 400 points each, 11,200 simulations total, $\sim$3.8\,h); reveals massive non-spiking plateaus (loss up to 247,838) and narrow low-loss valleys; pairs with $g_L$, $E_L$ show huge flat regions; confirms highly non-convex landscape with many local minima
-  \item All experiments used single trace from striatal projection neuron (13 spikes in 500\,ms window)
-  \item Current best: correct spike count achievable but spike timing at chance level ($\Gamma \leq 0.04$) --- far from state-of-the-art ($\Gamma \approx 0.82$)
-\end{itemize}
-
-\section{Test Environment}\label{sec:testenv}
-\itodo{Change section title}
-\itodo{I can already write most of this because it will be my macbook for the most part anyway.}
+\input{content/4_methodology.tex}
 
 \cleardoublepage
-\chapter{Results}\label{ch:results}\deadline{May 15th}
-
-\begin{figure}
-  \begin{center}
-    \includegraphics[width=0.95\textwidth]{figures/mse_training_results.pdf}
-  \end{center}
-  \caption{
-MSE training result.
-(a) The optimizer converges to a non-spiking subthreshold solution (blue) that tracks the experimental resting potential but produces no spikes.
-(b) The loss decreases monotonically, confirming that the non-spiking solution is indeed a local minimum of the MSE objective --- eliminating spikes reduces pointwise errors more effectively than aligning them.
-}\label{fig:mse-training-results}
-\end{figure}
-
-We evaluated gradient-based parameter fitting for the AdEx model using \texttt{Jaxley} across four loss functions, multiple surrogate gradients and several training stabilization techniques.
-We find that --- while being able to match spike counts and somewhat imitate spiking patterns, it consistently fails to match high precision spike timing across all tested configurations.
-Through loss function analysis and gradient diagnostics, we can identify six distinct failure modes that explain this behaviour.
-All gradient approaches were consistently outperformed by a Nelder-Mead baseline approach, which was able to capture spike timing precisions reliably.
+\input{content/5_results.tex}
 
 \cleardoublepage
-\chapter{Discussion}\label{ch:discussion}\deadline{May 31st}
+\input{content/6_discussion.tex}
 
 \cleardoublepage
-\chapter{Conclusions and Future work}\label{ch:conclusionsAndFutureWork}\deadline{May 31st}
-
-\section{Conclusions}
-\label{sec:conclusions}
-
-\section{Limitations}
-\label{sec:limitations}
-
-\section{Future work}
-\label{sec:futureWork}
-
-\section{Reflections}
-\label{sec:reflections}
-\itodo{What are the relevant economic, social,
-  environmental, and ethical aspects of your work?
-}
+\input{content/7_conclusion.tex}
 
 \cleardoublepage
 % Print the bibliography (and make it appear in the table of contents)
 \printbibliography[heading=bibintoc]
+
 
 % End of content
 % ----------------------------------------------------------------------------------------------
@@ -1404,65 +464,50 @@ All gradient approaches were consistently outperformed by a Nelder-Mead baseline
 
 \chapter{Figures and Tables}
 
-\section{Loss landscape}
+\section{Loss Landscape Analysis}\label{sec:app:loss}
+\ierror{This whole section reads like Methodology + Results, not appendix material. The setup paragraph (28 pairs, 11{,}200 simulations, 3.8\,h compute) belongs in Methodology, and the cross-loss plateau comparison (todo at end of section) belongs in Results. Consider moving the prose into \texttt{4\_methodology.tex} / \texttt{5\_results.tex} and leaving only figure plates here, if anything.}
+To characterise the optimisation problem independently of any particular training run, we computed each of the four loss functions on a dense two-parameter grid ($20 \times 20 = 400$ points per pair) for 28 parameter pairs, for a total of $11{,}200$ simulations and $\sim$3.8\,h of compute.
+The remaining parameters were held at the default initial values of \cref{tab:adex_params}.
 
-To get a better feeling for the parameter space, we visualized the loss function.
-We simulated using the initial parameters described in Tab.~\ref{tab:app:initial_params},
-
-\begin{table}[H]
-\centering
-\caption{AdEx initial parameters for loss function plot}
-\label{tab:app:initial_params}
-\begin{tabular}{llll}
-\toprule
-\textbf{Parameter} & \textbf{Symbol} & \textbf{Default} & \textbf{Unit} \\
-\midrule
-Membrane capacitance & $C_m$ & 200 & pF \\
-Leak conductance & $g_L$ & 12 & nS \\
-Leak reversal & $E_L$ & -70 & mV \\
-Threshold potential & $V_T$ & -50 & mV \\
-Slope factor & $\Delta_T$ & 2 & mV \\
-Reset potential & $V_r$ & -58 & mV \\
-Detection threshold & $v_{\text{threshold}}$ & 0 & mV \\
-Adaptation time constant & $\tau_w$ & 300 & ms \\
-Subthreshold adaptation & $a$ & 2 & nS \\
-Spike-triggered adaptation & $b$ & 60 & pA \\
-Stimulation current & $I$ & 500 & pA\\
-\bottomrule
-\end{tabular}
-\end{table}
-
-then varied two of the parameters and kept the others fixed at the initial values.
-To compute the loss, we used a feature based loss the configuration of Tab.~\ref{tab:app:loss_configuration}.
-
-\begin{table}[H]
-\centering
-\caption{Loss function configuration}
-\label{tab:app:loss_configuration}
-\begin{tabular}{llll}
-\toprule
-\textbf{Parameter} & \textbf{Weight} \\
-\midrule
-$t_\text{first}$ & 25\\
-$t_\text{second}$ & 20\\
-$t_\text{third}$ & 15\\
-$t_\text{last}$ & 10\\
-firing frequency & 10\\
-spike count & 0.2\\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{figure}[H]
+\begin{figure}[t]
   \begin{center}
-    \includegraphics[width=0.95\textwidth]{figures/guarino_loss_landscape_3d_all.pdf}
+    \includegraphics[width=\textwidth]{figures/mse_loss_landscape_grid.pdf}
   \end{center}
-  \caption{Loss landscape, parameters fixed at initial values, varied two at a time.}\label{fig:app:guarino-loss-landscape-all}
+  \caption{The MSE loss landscape --- even in these simplified conditions where only two parameters at a time are changed ---
+is characterized by lots of local minima. Some parameter combinations are also characterized by long shallow valleys.}\label{fig:results:mse-loss-landscape}
 \end{figure}
+
+\begin{figure}[t]
+  \begin{center}
+    \includegraphics[width=\textwidth]{figures/soft-dtw_loss_landscape_grid.pdf}
+  \end{center}
+  \caption{When observing the \gls{SDTW} loss landscape, we identify very thin and deep valleys containing the global minima.
+This is correlating with the observtion, that \gls{SDTW} was only able to recover very small parameter perturbations.
+For larger perturbations, gradients were close to 0, which can be explained by the large loss plateaus visible. }\label{fig:results:sdtw-loss-landscape}
+\end{figure}
+
+\begin{figure}[t]
+  \begin{center}
+    \includegraphics[width=\textwidth]{figures/vanrossum_loss_landscape_grid.pdf}
+  \end{center}
+  \caption{Even though the Van-Rossum loss landscape is also marked by big plateaus indicating non-spiking parameter configurations, it promises to be the most interesting candidate based on this loss landscape plots.
+The local minima are less pronounced than in the \gls{MSE} landscape, even though still present.
+The global minima are more accessible and distinct compared to the others.}\label{fig:results:vanrossum-loss-landscape}
+\end{figure}
+
+\begin{figure}[t]
+  \begin{center}
+    \includegraphics[width=\textwidth]{figures/guarino_loss_landscape_grid.pdf}
+  \end{center}
+  \caption{The feature-based loss shows also promising characteristics.
+It seems to be the most resistant against local minima in this testing configurations;
+however, it shows large loss plateaus which could indicate small-to-zero gradients for ill conditioned initial parameters.}\label{fig:results:guarino-loss-landscape}
+\end{figure}
+
+\itodo{Comment on how the plateau shape differs across losses --- in particular, whether Van Rossum or soft-DTW reduces plateau size relative to Guarino.}
 
 % End of Appendix
 % ----------------------------------------------------------------------------------------------
-
 
 %% The following label is necessary for computing the last page number of the body of the report to include in the "For DIVA" information
 \label{pg:lastPageofMainmatter}

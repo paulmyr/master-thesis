@@ -1,0 +1,175 @@
+\chapter{Results}\label{ch:results}\deadline{May 8th}
+
+\itodo{Rewrite results introduction. Dummy Text:\\
+We evaluated gradient-based parameter fitting for the \gls{AdEx} model in \texttt{Jaxley} across four differentiable loss functions, three surrogate gradient families, and several training-stabilisation techniques.
+Our central finding is that all gradient-based configurations can match spike \emph{counts} and coarse firing patterns under right circumstances, but consistently fail to recover high-precision spike \emph{timing}.
+...\\
+The remainder of this chapter is organised as follows.
+\Cref{sec:results:verification} confirms implementation correctness against Brian2.
+\Cref{sec:results:landscape} presents a systematic loss-landscape sweep.
+\Cref{sec:results:training} reports per-loss-function training outcomes.
+\Cref{sec:results:baseline} provides the Nelder--Mead baseline.
+\Cref{sec:results:failure-modes} synthesises the six failure modes.}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{An AdEx Channel for Jaxley}\label{sec:results:verification}
+
+The first concrete outcome of this thesis is a working \gls{AdEx} channel for \texttt{Jaxley}, validated against an established reference simulator.
+Following the protocol of \cref{sec:verification}, we compare our implementation to Brian2 \cite{Stimberg2019} on all three reference parameter sets from Naud et al.~\cite{Naud2008} --- tonic, adaptation and original --- which together cover the qualitatively distinct firing regimes \gls{AdEx} is meant to reproduce.
+
+Across all three configurations, the two simulators produce identical spike counts, and the maximum pair-wise spike-timing difference stays below $1$\,ms.
+\Cref{fig:brian_comparison} shows the side-by-side comparison of voltage traces, adaptation current $w$, and spike times.
+The remaining sub-millisecond differences are what one would expect given that the two simulators use different integration schemes for the membrane equation, and they are well below the temporal resolution at which we later evaluate spike-timing accuracy via the coincidence factor $\Gamma$.
+
+\begin{figure*}
+  \begin{center}
+    \includegraphics[width=\textwidth]{figures/adex_comparison_combined.pdf}
+  \end{center}
+  \caption{Comparison of our \texttt{Jaxley} \gls{AdEx} implementation against Brian2 across three reference parameter sets.
+Left to right: tonic, adaptation and original parameters.
+Tonic and adaptation parameters refer to the parameters provided by \cite{Naud2008}, original parameters are the parameters used in the original AdEx paper \cite{Brette2005}.
+Top row shows the simulated voltage traces;
+note that when the threshold is reached, the voltage is reset within the same time step --- a behaviour that becomes important when thinking about loss functions later on.
+Second row displays the adaptation current $w$.
+Last row compares the spike timings between \texttt{Brian2} and \texttt{Jaxley}.}\label{fig:brian_comparison}
+\end{figure*}
+
+This validation matters for two reasons.
+First, it establishes that an \gls{AdEx}-style simplified neuron --- with its discrete reset and exponential spike initiation --- can be expressed cleanly inside a framework otherwise designed for \gls{HH}-type compartmental models.
+The same implementation pattern carries over to other simplified models such as \gls{LIF} and Izhikevich, so the contribution is not strictly limited to \gls{AdEx}.
+Second, and more importantly for the rest of this chapter: every optimisation failure we report from here on can be discussed as a property of gradient-based training and loss-function design, rather than as a possible artefact of the underlying dynamics.
+The forward model is not the bottleneck.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Loss Function Analysis}\label{sec:results:landscape}
+
+We implemented various different loss functions:
+\gls{MSE}, a summary statistics-based loss (like Deistler used), \gls{SDTW}, Van Rossum distance and a typically feature-based loss --- this implementation is based on Guarino et al. \cite{Guarino2025}.
+We were only able to fit the AdEx model using the latter two in isolated instances.
+With \gls{MSE}, \gls{SDTW}, summary statistics and other loss functions, we were not successful in any test whatsoever.
+
+To better understand these loss functions, we plotted loss landscapes.
+We fixed the parameters at the adaptive scenario described in \ref{}\mtodo{Table with adaptive NAUD spiking paramters}.
+Then, we varied two parameters in an 20x20 grid, bounded by the parameter bounds.
+\Cref{sec:app:loss} (appendix) shows all 28 surfaces for the feature-based loss.
+The qualitative picture repeats across loss functions:
+
+\begin{itemize}
+  \item \textbf{Massive non-spiking plateaus.} Large regions of parameter space produce no spikes at all and yield a constant (or near-constant) loss. For the feature-based loss this plateau value exceeds $10^{5}$ and dominates the total volume of the grid.
+  \item \textbf{Narrow low-loss valleys.} The spiking region forms thin, curved valleys rather than isotropic basins. Valleys are often parallel to one axis (e.g.\ $g_L$--$E_L$ trades off along a single direction), meaning small updates along the wrong axis leave the loss unchanged.
+  \item \textbf{Gradient direction outside the valley.} Because the plateau is flat, gradients on the plateau are dominated by soft spike-detection terms rather than by the true distance to a spiking solution. The optimiser therefore cannot recover once it has been pushed onto the plateau.
+\end{itemize}
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Parameter Recovery by Loss Function}\label{sec:results:training}
+
+We evaluated each loss function on a synthetic single-trace recovery task.
+Ground-truth parameters are fixed at one of the Naud reference sets (tonic, adaptation, or original)~\cite{Naud2008},
+a target voltage trace is generated with the \texttt{Jaxley} \gls{AdEx} implementation validated in \cref{sec:results:verification},
+and the trainable parameters are perturbed before optimisation.
+Because the optimiser has access to the same forward model that produced the target,
+any failure to recover the parameters is attributable to the loss function and the optimisation procedure rather than to model mismatch.
+
+The headline result is mixed.
+We were not able to recover adaption parameter $a, b, \tau_w$.
+Gradient-based fitting can recover the other \gls{AdEx} Parameters in all of these regimes when peturbations are small --- we open the section with one such success in \cref{sec:results:positive-example} as a worked example to establish that the approach is viable in principle.
+However, recovery is fragile:
+each loss required its own hand-tuned combination of learning rate, surrogate slope, and gradient clipping,
+and even with careful tuning we could not identify a single hyperparameter set that recovers parameters consistently across regimes and seeds.
+The remainder of the section unpacks this asymmetry one loss at a time.
+\Cref{sec:results:mse} shows that \gls{MSE} collapses to a non-spiking solution on every regime we tested;
+\cref{sec:results:guarino} shows that the feature-based Guarino loss can match spike counts but not timing;
+and \cref{sec:results:vanrossum} shows that the Van Rossum distance recovers timing when it converges,
+but inherits the non-spiking-plateau failure mode diagnosed in \cref{sec:results:landscape}.
+\Cref{sec:results:baseline} then aggregates over many seeds and quantifies the overall failure rate, alongside a derivative-free baseline.
+
+\subsection{A Worked Example: Recovering a Tonic AdEx Cell}\label{sec:results:positive-example}
+\itodo{Positive-result subsection — single worked example before the per-loss breakdown.\\
+\textbf{Setup:} ground truth = Naud ``tonic'' parameter set, $\sim$15\,\% perturbation on all trainable parameters, Guarino loss (or Van Rossum — pick whichever recovers most cleanly), single-stage training. Source notebook: \texttt{training\_synthetic\_singlestage\_guarino.ipynb}.\\
+\textbf{Figures (in order):}\\
+1. {fit\_before\_after\_plot} — voltage traces overlaid: ground truth, perturbed init, recovered. Goal: visually convincing match of spike count and gross timing.\\
+2. \texttt{parameter\_comparison\_plot} — per-parameter bar chart of init vs.\ recovered vs.\ ground truth, normalised to bound width. Goal: show which parameters recover well (likely $C_m$, $g_L$, $E_L$) and which drift (likely $b$, $\tau_w$, $v_{\text{reset}}$).\\
+3. \emph{(Optional, only if it adds something)} \texttt{training\_history\_plot} — loss curve. Skip unless the convergence shape is itself part of the argument.\\
+\textbf{Caveat to disclose in text:} ground truth was generated with the same surrogate-enabled cell used for training (forward pass is identical with/without surrogate, so this is not a circular validation, but worth stating for the reader).\\
+\textbf{Bridge sentence into landscape figure:} ``This success is not generic — \cref{fig:vanrossum-landscape} shows that the loss surface around this operating point contains narrow valleys and large non-spiking plateaus, and the next subsections show what happens when the optimiser starts on the wrong side of one.''}
+
+\itodo{Consider promoting one panel from the appendix loss-landscape figure (\cref{fig:app:guarino-loss-landscape-all}) into this section as motivation — e.g.\ the $g_L$ vs.\ $\tau_w$ pair, which has a clean valley around the tonic operating point.}
+
+\subsection{Mean Squared Error}\label{sec:results:mse}
+
+The \gls{MSE} loss on raw voltage traces fails as a parameter-fitting objective.
+The optimiser consistently converges to a non-spiking subthreshold solution that tracks the resting potential of the target trace (\cref{fig:mse-training-results}a) and drives the loss monotonically downward (\cref{fig:mse-training-results}b).
+This behaviour is \emph{correct} with respect to the objective: once spikes are removed, point-wise errors shrink faster than they would by aligning spikes correctly, so the non-spiking region is a genuine local minimum of \gls{MSE}, not an optimisation artefact.
+This confirms the intuition that pixel-wise distances on voltage traces are ill-suited to spiking data.
+
+\begin{figure}
+  \begin{center}
+    \includegraphics[width=0.95\textwidth]{figures/mse_training_results.pdf}
+  \end{center}
+  \caption{
+\gls{MSE} training result.
+(a) The optimiser converges to a non-spiking subthreshold solution (blue) that tracks the experimental resting potential but produces no spikes.
+(b) The loss decreases monotonically, confirming that the non-spiking solution is a local minimum of the \gls{MSE} objective --- eliminating spikes reduces point-wise error more effectively than aligning them.
+}\label{fig:mse-training-results}
+\end{figure}
+
+\itodo{Write Result MSE in regards to benchmark}
+
+\subsection{Feature-Based Loss (Guarino)}\label{sec:results:guarino}
+\itodo{Write Result Section Guarino.\\
+\textbf{Figures:}\\
+- \texttt{fit\_before\_after\_plot} on a regime where Guarino \emph{fails} (e.g.\ adaptation parameter set, larger perturbation) — contrast with the positive example above.\\
+- \texttt{parameter\_comparison\_plot} for the failed run — show that adaptation parameters ($a$, $b$, $\tau_w$) are pushed to bounds.\\
+- Soft-feature trajectory diagnostic: plot extracted features (spike times, ISIs, $v_\mathrm{stim\_end}$) per epoch vs.\ ground-truth features. Shows whether the loss \emph{thinks} it is converging while the underlying spike train is not.\\[1em]
+\textbf{Narrative beats:}\\
+- Loss decreases but $\Gamma$ stays near zero $\Rightarrow$ feature matching $\neq$ spike-timing matching.\\
+- Soft feature extraction creates gradient on plateau but the gradient does not point toward a spiking solution (cross-reference \cref{sec:results:landscape}).
+}
+
+
+\subsection{Van Rossum Distance}\label{sec:results:vanrossum}
+\itodo{Write Result Section Van Rossum.\\
+\textbf{Figures:}\\
+- \texttt{fit\_before\_after\_plot} on the same regimes used for Guarino, for direct comparison.\\
+- \texttt{parameter\_comparison\_plot} — recovered vs.\ ground truth per parameter.\\
+- Loss landscape excerpt from \texttt{loss\_landscape\_synthetic\_all\_vanrossum.ipynb}: 2--3 hand-picked panels (e.g.\ $g_L$ vs.\ $\tau_w$, $v_T$ vs.\ $v_\mathrm{reset}$, $a$ vs.\ $b$) showing the valley structure plus the gradient quiver overlay. The full 28-pair triangle goes in the appendix.\\[1em]
+\textbf{Narrative beats:}\\
+- Compared to Guarino, Van Rossum has \emph{temporal} credit assignment via the exponential kernel $\Rightarrow$ expect better $\Gamma$ when it does converge.\\
+- But the non-spiking plateau is still present (kernel of zero spike train is zero), so failure modes from \cref{sec:results:landscape} carry over.\\
+- Quantify: how often does Van Rossum recover within $\Gamma > 0.5$ across the seed sweep?
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Derivative-Free Baseline}\label{sec:results:baseline}
+\itodo{Write baseline results: Nelder-Mead and Random Search}
+
+\begin{table}[t]
+\centering
+\caption{Summary of final coincidence factor $\Gamma$ across methods on the synthetic single-trace task. Positive $\Gamma$ denotes better-than-chance spike-timing prediction; $\Gamma \approx 0.82$ is the state-of-the-art level reported by Jolivet et al.~\cite{Jolivet2008}.}
+\label{tab:results-summary}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Method / Loss} & \makecell{\textbf{Spike count}\\(sim/target)} & \textbf{$\Gamma$} \\
+\midrule
+MSE           & \ttodo  & \ttodo \\
+Guarino       & \ttodo  & \ttodo \\
+Van Rossum    & \ttodo  & \ttodo \\
+\midrule
+\makecell{Simplex (Nelder--Mead)\\Van Rossum obj.} & \ttodo & \ttodo\\
+Random Search & \ttodo & \ttodo\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Why Gradients Fail: Failure Modes}\label{sec:results:failure-modes}
+\itodo{
+Failure modes: Vanishing + exploding gradients, non-convex loss landscape, huge hyperparameter space, ...
+}
+
+\section{Outlook: Training on voltage recordings}
+
