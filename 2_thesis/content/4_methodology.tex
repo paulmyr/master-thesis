@@ -282,11 +282,14 @@ Standard implementations use hard threshold crossings, which are non-differentia
 To enable gradient-based optimization, we developed soft approximations of the feature extraction operations.
 
 The naming ``soft approximation'' is potentially misleading and warrants up-front clarification: the spike trace itself is never softened.
-The \texttt{AdExSurrogate} channel emits a strictly binary indicator $s(t)\in\{0,1\}$ at every time step (\cref{sec:method:surrogate-gradients:implementation}), so the recorded trace contains real, mass-$1$ spike events --- there are no fractional spikes anywhere in the forward pass.
+The \texttt{AdExSurrogate} channel emits a strictly binary indicator $s(t)\in\{0,1\}$ at every time step (\cref{sec:method:surrogate-gradients:implementation}), so the recorded trace contains real, mass-$1$ spike events\footnote{
+  "Mass" here is borrowed from measure theory / signal processing. A spike train is treated as a sum of point events on the time axis, and each event carries a mass — the integer or real number it contributes to integrals/sums of the trace. }
+--- there are no fractional spikes anywhere in the forward pass.
 In particular, the spike count $N_{\text{spikes}} = \sum_{t} s(t)$ and the cumulative count $\sum_{\tau\leq t} s(\tau)$ are exact integers.
 
 What is ``soft'' is the \emph{recipe} we use to turn this binary signal into feature values, not the values it produces.
-Concretely, the time of the $n$-th spike could in principle be read off as $\arg\max\{t : \sum_{\tau\leq t} s(\tau) = n\}\cdot\Delta t$, but $\arg\max$ is non-differentiable: a small change in $\theta$ leaves the integer index unchanged (then jumps it by one), so the chain-rule derivative through such an operation is zero almost everywhere.
+Concretely, the time of the $n$-th spike could in principle be read off as $\arg\min\{t : \sum_{\tau\leq t} s(\tau) = n\}\cdot\Delta t$,
+but $\arg\min$ is non-differentiable: a small change in $\theta$ leaves the integer index unchanged (then jumps it by one), so the chain-rule derivative through such an operation is zero almost everywhere.
 We replace this hard lookup with a smooth weighted average over time, gated by a sigmoid-of-cumulative-sum selector (described in detail below).
 On a binary $s(t)$ the selector collapses to $\approx\!1$ at the $n$-th spike's index and $\approx\!0$ elsewhere, so the forward value is essentially identical to the exact spike time; what differs is that the recipe is now a chain of differentiable operations.
 The temperature $\tau$ and sigmoid sharpness $\beta$ control how sharp this selector is; they do not turn $s(t)$ itself into a continuous variable.
@@ -349,16 +352,15 @@ and the trainable parameters are bounded by physiologically plausible ranges, so
 We address these issues with a small set of stabilisation techniques applied on top of the optimiser, summarised below and combined as listed in \cref{tab:training-params}.
 
 \subsubsection{Polyak step-size normalisation.}
-Polyak's adaptive step size\itodo{add Polyak~1987 reference to \texttt{references.bib}} replaces the fixed learning rate $\eta$ with one that depends on the current loss value and gradient norm:
+Polyak's adaptive step size \cite{Polyak1964} replaces the fixed learning rate $\eta$ with one that depends on the current loss value and gradient norm:
 \begin{equation}
     \theta_{t+1} = \theta_t - \eta \cdot \frac{|\mathcal{L}(\theta_t)|^{\alpha}}{\|\nabla \mathcal{L}(\theta_t)\|^{\beta} + \epsilon} \cdot \nabla \mathcal{L}(\theta_t),
 \end{equation}
 with $\alpha, \beta \in [0,1]$ controlling how strongly the loss and the gradient norm enter.
 For $\alpha = \beta = 1$ this reduces to a normalised gradient step whose magnitude is set by the current loss,
 so the update size shrinks automatically as the optimiser approaches a minimum and grows when far from it.
-In our setting Polyak addresses the across-parameter scale mismatch:
-the same $\eta$ would otherwise produce vanishingly small updates for parameters with naturally small gradients (e.g.\ $C_m$) and unstable jumps for those with large gradients (e.g.\ $V_T$).
-\itodo{Check if this is true for exactly these parameters. Is VT gradient actually large compared to Cm}
+In our setting Polyak provides two practical benefits: it caps the joint step magnitude when gradient components spike, removing the need for explicit gradient clipping; and it shrinks the effective step size as $|\mathcal{L}|$ decreases, providing automatic annealing without an explicit learning-rate schedule.
+Note, however, that the normalisation uses a single scalar $\|\nabla\mathcal{L}(\theta_t)\|$: the relative magnitudes of per-parameter gradients are preserved, so across-parameter scale mismatch (e.g.\ between $C_m$ and $V_T$) is not addressed by Polyak alone.
 
 \subsubsection{Sigmoid parameter transformation.}
 Hard projection of $\theta_t$ back into $[\theta_{\min}, \theta_{\max}]$ after each update kills the gradient component that points out of the feasible region: a parameter pinned at its bound receives no further signal even when the loss would benefit from it remaining there.

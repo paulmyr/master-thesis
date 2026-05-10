@@ -11,9 +11,12 @@ We survey three categories of loss functions and their trade-offs for spiking mo
 
 \section{Neuron Models}\label{sec:bg:neuron-models}
 Large-scale brain models are limited in size mostly by computational feasibility.
-Detailed bio-physical models like the \gls{HH}-model can precisely predict membrane behaviour of a vast variety of neuron types.
+Detailed bio-physical models which combine multi-compartment reconstructions of neuron morphology
+with non-linear ion channel dynamics (\gls{HH}, stoch. \mtodo{This was an annotation by Alex, what does stoch. mean? Stochastic models?})
+can precisely predict membrane behaviour of a vast variety of neuron types.
 However, they require huge computational resources to estimate the required parameters to fit the models to experimental data.
-Simplified Neuron Models models overcome this challenge, capturing most of the sophisticated neuron behaviour with only a fraction of the computational cost, enabling large-scale simulations \cite{Gerstner2014}.
+Simplified Neuron Models overcome this challenge, capturing a subset of the sophisticated neuron behaviour with only a fraction of the computational cost, enabling large-scale simulations \cite{Gerstner2014}.
+\mtodo{Loose a word abour point neuron-models (see Alex annotation).}
 The \gls{AdEx} model \cite{Naud2008} provides a particularly interesting balance --- it reproduces a variety of firing patterns but drastically reduces the number of necessary parameters of the model.
 This makes it a favourable model for large-scale neuron simulations \cite{Tesler2024}\mwarning{Should there be that many citations here? Mostly Textbook citations, make sure of that}.
 
