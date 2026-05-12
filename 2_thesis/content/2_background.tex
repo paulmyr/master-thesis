@@ -12,13 +12,13 @@ We survey three categories of loss functions and their trade-offs for spiking mo
 \section{Neuron Models}\label{sec:bg:neuron-models}
 Large-scale brain models are limited in size mostly by computational feasibility.
 Detailed bio-physical models which combine multi-compartment reconstructions of neuron morphology
-with non-linear ion channel dynamics (\gls{HH}, stoch. \mtodo{This was an annotation by Alex, what does stoch. mean? Stochastic models?})
+with non-linear ion channel dynamics (\gls{HH}, stochastic models)
 can precisely predict membrane behaviour of a vast variety of neuron types.
 However, they require huge computational resources to estimate the required parameters to fit the models to experimental data.
 Simplified Neuron Models overcome this challenge, capturing a subset of the sophisticated neuron behaviour with only a fraction of the computational cost, enabling large-scale simulations \cite{Gerstner2014}.
-\mtodo{Loose a word abour point neuron-models (see Alex annotation).}
+Point neuron models boost computational performance by reducing branched neuron morphologies to a single active compartment.
 The \gls{AdEx} model \cite{Naud2008} provides a particularly interesting balance --- it reproduces a variety of firing patterns but drastically reduces the number of necessary parameters of the model.
-This makes it a favourable model for large-scale neuron simulations \cite{Tesler2024}\mwarning{Should there be that many citations here? Mostly Textbook citations, make sure of that}.
+This makes it a favourable model for large-scale neuron simulations \cite{Tesler2024}.
 
 The \gls{AdEx} model improves the simpler \gls{LIF} model in two ways:
 first, it introduces exponential behaviour when initialising the spike.
@@ -51,7 +51,7 @@ It is controlled by $a$ (sub-threshold adaptation) as well as $b$ (spike-trigger
 Even though the number of parameters is significantly reduced compared to bio-physical \gls{HH}-type models, it still requires parameter fitting --- especially because some parameters (e.g. $a$, $b$ or $\tau_w$) do not have direct physiological counterparts (like $C$ or $g_L$).
 For \gls{AdEx} to perform as an effective tool, efficient methods for parameter optimizations are essential.
 
-The \gls{AdEx} equations (Eqs.~\ref{eq:adex1},\ref{eq:adex2}) are continuous ordinary differential equations.
+The \gls{AdEx} equations (Eqs.~\ref{eq:adex1},\ref{eq:adex2}) are continuous ordinary differential equations with a singular discontinuity at spike events.
 To simulate numerically, we discretise into a series of time steps $t_0, t_1 = t_0 + \Delta t, ..., T$.
 Given the state $s_t = (V_t, w_t)$ at time $t$, we compute $s_{t+1}$ using forward Euler for $V$ and exponential Euler for $w$.
 This produces a sequence of states $s_0, s_1, ..., s_T$ — the same that \gls{BPTT} (Section~\ref{sec:bg:sg:bptt}) will differentiate through.
@@ -77,12 +77,12 @@ There exist no mechanism to escape local minima in non-convex landscapes, which 
 
 A different popular choice are \glspl{EA}:
 These models maintain a collection of candidate solutions (population, parameter sets).
-Each generation, fitness is evaluated using an objective functions.
-Fittest solution 'produce offspring' through mutation and recombination.
+At each generation, fitness is evaluated using an objective functions.
+Fittest solution 'produces offspring' through mutation and recombination.
 Similar to the simplex algorithm, this only requires forward evaluation of the simulator.
 Multi-objective variants optimize for several objective functions simultaneously.
-This is a useful feature because for neuron fitting, multiple features (spike count, timing, frequencies, subthreshold voltage, ...) can be treated as separate objectives rather than a single objective function.
-\glspl{EA} reduce the risk of under-sampling, however, they typically require hundreds tot thousands of generations with tens to hundreds if individuals --- that needs lots of computational resources.
+This is a useful feature because for neuron fitting, multiple features (spike count, timing, frequencies, subthreshold voltage, ...) extracted from multiple traces can be treated as separate objectives rather than a single objective function.
+\glspl{EA} reduce the risk of under-sampling, however, they typically require hundreds to thousands of generations with tens to hundreds of individuals --- that needs lots of computational resources.
 
 Main advantage of these methods is that they are derivative-free: only the forward pass and objective function is evaluated.
 This makes them applicable to any model and any metric, including non-differentiable ones.
@@ -91,7 +91,7 @@ However, the cost is sample efficiency — each candidate requires a full forwar
 \subsection{Gradient-based Tuning}\label{sec:bg:tuning:gradient-based}
 Gradient-based optimisation requires computing the partial derivative $\partial L / \partial \theta$ for all trainable parameters.
 Doing this analytically is impractical and inefficient for complex simulations with thousands of timesteps.
-\gls{AD} solves this by decomposing the computation into elementary operations and applying the chain rule systematically.
+\gls{AD} solves this by decomposing the computation into elementary operations and applying the chain rule\mwarning{Alex underlined this. Should I define the chain rule? Isn't that basic analysis knowledge? What exactly am I missing here.} systematically.
 The most common method is reverse-mode \gls{AD}, also called \gls{BP}, is a particularly efficient method:
 it creates a computational graph of operations --- each of them has to be differentiable.
 Then one backward pass yields all parameter gradients simultaneously.
@@ -104,7 +104,13 @@ Addressing this issue requires special treatment: surrogate gradients.
 \section{Surrogate Gradients}\label{sec:bg:surrogate-gradients}
 \gls{SG} were developed to adapt spiking neurons (usually \gls{LIF} models) for gradient-based training, primarily on classification tasks in \glspl{SNN}.
 There, thousands of synaptic weights are trained under a task loss such as cross-entropy, and the surrogate's role is to let those weight gradients flow through the otherwise non-differentiable spike events.
-The remainder of this section describes the mechanism; how it transfers to biophysical parameter fitting is taken up in \cref{sec:rw:sg-snn}.
+Model parameters are usually fixed (and given as hyperparameters).
+
+To use \gls{AdEx} for biophysical simulations, the actual model parameters ($g_L, a, b, \tau_w, \dots$) --- each with different units and scales --- need to be learned.
+Some affect every timestep (leak), others only act at spike events (e.g. reset and adaptation variables).
+A loss function must quantify similarity between simulated and recorded spike trains.
+Whether \gls{SG}, which were shown to work for weight training, also enable biophysical parameter fitting (for simplified neuron models) remains an open question.
+\iwarning{I rewrote that paragraph, is that clearer now?}
 
 Training these models on real data requires differentiating through the forward simulation.
 Because \gls{LIF}-type models are discontinuous (see reset in equation~\ref{eq:adex3}), automatic differentiation produces undefined or zero gradients.
@@ -215,8 +221,8 @@ We will further discuss the choice of surrogate, its steepness and how it intera
 
 \section{Loss Functions for Spiking Models}\label{sec:bg:loss-functions}
 
-Surrogate gradients allows gradients to flow backward in time, however, the loss function determines the direction of the gradient.
-A loss function, that points towards a non-spiking solution will not produce correct spiking behaviour, no matter the surrogate gradient.
+Surrogate gradients allow gradients to flow backward in time, however, the loss function's landscape determines the direction of the gradient.
+If the gradient points towards a non-spiking solution, the model will not produce correct spiking behaviour, no matter the surrogate gradient.
 
 \subsection{Non-convex Parameter Space}\label{sec:bg:loss:param-space}
 \itodo{Include plots of parameter space.}
@@ -226,7 +232,7 @@ A typical loss landscape therefore consists of large plateaus, on which the mode
 Gradient descent is consequently sensitive to initialisation: a starting point on a non-spiking plateau provides no gradient signal pointing towards the spike-producing region.
 
 \subsection{Loss function categories}\label{sec:bg:loss:categories}
-e can differentiate in three category of losses:
+We can differentiate in three category of losses:
 \begin{enumerate}
   \item Pointwise differences
   \item Feature-based losses
@@ -251,7 +257,7 @@ Here we evaluate the spike trains for different metrics, e.g. the number of spik
 The simplest one is voltage mean and deviation, but they can be more specific.
 These loss functions are commonly used for parameter fitting in simplified neuron models.
 However, by default, most of these features are not in itself differentiable.
-For existing methods that use non-gradient methods --- like Grid Search, Nelder-Mead or Genetic Algorithms --- this is irrelevant.
+For non-gradient methods like Grid Search, Nelder-Mead or Genetic Algorithms, this is irrelevant.
 When applied to gradient-based optimisations, possibly adjustments have to be made.
 For example, the $\max$ function might be substituted with a $\text{softmax}$ alternative, which is defined as $\text{softmax}(z) \in (0, 1)^K$
 \begin{equation}\label{eq:softmax}
@@ -267,7 +273,7 @@ unlike feature-based losses, they preserve the full temporal structure of the tr
 The Van Rossum distance \cite{Rossum2001} convolves each spike train with a causal exponential kernel $K(t) = \exp(-t/\tau)$ and computes the $L^2$ distance between the resulting filtered traces:
 \begin{equation}\label{eq:van-rossum}
     \mathcal{L}_{\text{VR}}^2 = \frac{1}{\tau} \int_0^T \left( f_{\text{sim}}(t) - f_{\text{exp}}(t) \right)^2 dt
-\end{equation}
+\end{equation}\mwarning{Alex wrote $t_i > t?$ here, I'm unsure what that means...}
 where $f(t) = \sum_i K(t - t_i)$ is the filtered spike train.
 The time constant $\tau$ controls the temporal precision: small $\tau$ penalises sub-millisecond timing errors (temporal coding),
 while large $\tau$ smooths over individual spikes and compares overall firing rates (rate coding).
@@ -291,7 +297,7 @@ yielding the smoothed recursion
     \mathcal{L}_{\text{SDTW}}^{\gamma}(x, y) &= r_{n,m}^{\gamma}.
 \end{align}
 The smoothing factor $\gamma > 0$ controls the relaxation:
-as $\gamma \to 0$, Soft-DTW recovers the original DTW distance, while larger $\gamma$ produces smoother gradients at the cost of a looser alignment.\footnote{This is the equivalent to the inverse temperature $\beta$ from the softmax function (\ref{eq:softmax})}
+as $\gamma \to 0$, Soft-DTW recovers the original DTW distance, while larger $\gamma$ produces smoother gradients at the cost of a looser alignment.\footnote{This is the equivalent to the inverse temperature $\beta$ from the softmax function (eq.~\ref{eq:softmax})}
 This makes the alignment distance amenable to gradient-based optimisation, at the cost of $O(nm)$ time and memory complexity.
 
 All three categories share one fundamental constraint: every operation in the computational path from parameters to loss must be differentiable.
@@ -302,7 +308,7 @@ This requirement ties directly back to the surrogate gradient framework introduc
 the surrogate provides a soft spike indicator $s(t) \in [0, 1]$ that can serve as input to any of these loss functions.
 
 \section{Summary}\label{sec:bg:summary}
-The AdEx model provides an efficient yet expressive neuron model, but parameters like $a$, $b$ and $\tau_w$ lack direct physiological counterparts and must be fitted through optimisation.
+The AdEx model provides an efficient yet expressive neuron model, but parameters must be fitted through optimisation to get expressive, neuron imitating firing behaviour.
 Gradient-based methods are attractive due to their computational efficiency, however, the Heaviside reset mechanism creates a differentiability barrier that prevents standard automatic differentiation.
 Surrogate gradients restore gradient flow through spike events by replacing the Heaviside derivative with a smooth surrogate during the backward pass.
 Three challenges remain: the parameter space is highly non-convex, gradients still decay exponentially through the leak dynamics, and the surrogate steepness $\beta$ must be chosen carefully.

@@ -10,15 +10,11 @@ The chapter is organised as follows.
 Section~\ref{sec:method:adex_impl} specifies the \gls{AdEx} dynamics and our discrete-time formulation in \texttt{Jaxley}.
 The surrogate-gradient variant is introduced in \cref{sec:method:surrogate-gradients},
 including the soft reset and the choice of surrogate function.
-\itodo{Add \texttt{\textbackslash label} and reference for the loss-function section.}
-We then dive into parameter optimsation (\cref{sec:method:param_opt}), starting with our evaluation metric $\Gamma$, followed by
-the four differentiable loss functions we compare --- \gls{MSE},
-soft-DTW, the feature-based loss of Guarino et al., and the Van Rossum distance ---
-and the differentiable approximations required to make the feature-based loss usable
-for gradient descent.
-Finally, we detail the optimisation setup (optimiser, parameter reparameterisation,
-initialisation) and the training-stabilisation techniques we use (gradient
-clipping, learning-rate schedules, Polyak averaging).
+We then dive into parameter optimisation (\cref{sec:method:param_opt}), starting with our evaluation metric $\Gamma$ (\cref{sec:method:evaluation-metrics}), followed by the differentiable loss functions we compare (\cref{sec:methodology:loss}) --- \gls{MSE},
+the feature-based loss of Guarino et al., and the Van Rossum distance --- and the differentiable approximations required to make the feature-based loss usable for gradient descent.
+\Cref{sec:training-stabilization} details the training-stabilisation techniques used on top of the optimiser (Polyak step-size normalisation, sigmoid parameter reparameterisation, multi-trace optimisation).
+The chapter closes with the \emph{recovery-radius benchmark} (\cref{sec:method:recovery-benchmark}): a paired protocol that varies the initial perturbation distance from a known ground-truth parameter set and measures, for each loss and for two derivative-free baselines (Nelder--Mead on the soft and hard Guarino objectives), how reliably the original parameters are recovered.
+The corresponding results are reported in \cref{ch:results}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -220,7 +216,8 @@ This way, the ground truth is known, so recovery success is measurable.
 We perform a perturbation protocol, meaning we identify in which distance from the ground truth the optimisation setup can reliably recover the parameters.
 A $\Gamma > 0.5$ is measured as a successful recovery.
 
-\ierror{Currently completly missing: Benchmark using Nelder-Mead and Gaurino Loss!!! WRITE THIS ASAP!!}
+The full protocol --- scenarios, perturbation grid, and the four methods we compare ---
+is specified in \cref{sec:method:recovery-benchmark}.
 
 \subsection{Evaluation Metrics}\label{sec:method:evaluation-metrics}
 Deistler et al.~\cite{Deistler2025} claim sub-millisecond and sub-millivolt matching for their \gls{HH}-type fits;
@@ -351,7 +348,7 @@ the loss landscape contains large non-spiking plateaus where soft spike-detectio
 and the trainable parameters are bounded by physiologically plausible ranges, so naive updates can step outside the feasible region.
 We address these issues with a small set of stabilisation techniques applied on top of the optimiser, summarised below and combined as listed in \cref{tab:training-params}.
 
-\subsubsection{Polyak step-size normalisation.}
+\subsubsection{Polyak step-size normalisation}
 Polyak's adaptive step size \cite{Polyak1964} replaces the fixed learning rate $\eta$ with one that depends on the current loss value and gradient norm:
 \begin{equation}
     \theta_{t+1} = \theta_t - \eta \cdot \frac{|\mathcal{L}(\theta_t)|^{\alpha}}{\|\nabla \mathcal{L}(\theta_t)\|^{\beta} + \epsilon} \cdot \nabla \mathcal{L}(\theta_t),
@@ -359,13 +356,20 @@ Polyak's adaptive step size \cite{Polyak1964} replaces the fixed learning rate $
 with $\alpha, \beta \in [0,1]$ controlling how strongly the loss and the gradient norm enter.
 For $\alpha = \beta = 1$ this reduces to a normalised gradient step whose magnitude is set by the current loss,
 so the update size shrinks automatically as the optimiser approaches a minimum and grows when far from it.
-In our setting Polyak provides two practical benefits: it caps the joint step magnitude when gradient components spike, removing the need for explicit gradient clipping; and it shrinks the effective step size as $|\mathcal{L}|$ decreases, providing automatic annealing without an explicit learning-rate schedule.
-Note, however, that the normalisation uses a single scalar $\|\nabla\mathcal{L}(\theta_t)\|$: the relative magnitudes of per-parameter gradients are preserved, so across-parameter scale mismatch (e.g.\ between $C_m$ and $V_T$) is not addressed by Polyak alone.
 
-\subsubsection{Sigmoid parameter transformation.}
-Hard projection of $\theta_t$ back into $[\theta_{\min}, \theta_{\max}]$ after each update kills the gradient component that points out of the feasible region: a parameter pinned at its bound receives no further signal even when the loss would benefit from it remaining there.
+In our setting Polyak provides two practical benefits: with $\alpha > 0$ step sizes decrease with decreasing loss $|\mathcal{L}|$.
+The $\beta$ variable controls how much of the gradient norm is divided out of the update:
+$\beta=0$ leaves spikes intact (vanilla magnitude), $\beta=1$ fully decouples step size from $|\nabla\mathcal{L}|$.
+The first benefit being automatic annealing when we get close to the global minimum while simultaneously soft capping gradient spikes.
+Note that this does not address magnitude differences between gradient parameters, because all partial differentials are normalised by the same factors.
+Large gradient spikes in one parameter actually dampen small gradients of other parameters.
+Polyak addresses \emph{temporal} gradient smoothing, not \emph{spatial}.
+
+\subsubsection{Sigmoid parameter transformation}
+Hard projection of $\theta_t$ back into $[\theta_{\min}, \theta_{\max}]$ after each update introduces two problems for adaptive optimisers:
+the projected portion of the step is discarded while the optimiser's internal state (momentum, second-moment estimates) is updated as if the full step had been taken, causing state-trajectory mismatch;
+and in multi-parameter updates the projection alters the descent direction in a way that depends on the bounds rather than on the loss.
 Following the transform pattern provided by \texttt{Jaxley}~\cite{Deistler2025},
-
 we instead reparameterise each bounded parameter through a sigmoid,
 \begin{equation}
     \theta = \theta_{\min} + (\theta_{\max} - \theta_{\min}) \cdot \sigma(\tilde{\theta}),
@@ -373,11 +377,14 @@ we instead reparameterise each bounded parameter through a sigmoid,
 and optimise in the unconstrained space $\tilde{\theta}\in\mathbb{R}$.
 Bounds are then enforced implicitly --- $\theta$ can never leave $[\theta_{\min},\theta_{\max}]$ ---
 and the gradient with respect to $\tilde{\theta}$ remains finite everywhere, including at the boundary,
-so the optimiser can still move along the bound rather than getting stuck at it.
-A side effect is that gradients are smallest near the bounds, which acts as a soft prior against parameter values close to the physiologically extreme ends of each interval.
+so the optimiser keeps receiving signal as $\theta$ approaches a bound rather than having it discarded by a projection step.
+A side effect is that gradients are smallest near the bounds, which acts as an implicit bias toward central values within each interval.
+However, this introduces a soft bias and hidden hyperparameters ($\theta_{\min}, \theta_{\max}$) for each parameter.
+Changing these can drastically affect convergence performance.
+Sensitivity to bound choices is common in bounded optimisation, but the sigmoid amplifies it.
 
-\subsubsection{Multi-trace optimisation.}
-Single-trace fitting is underdetermined: many parameter combinations produce the same firing pattern under one stimulus protocol but disagree under others.
+\subsubsection{Multi-trace optimisation}
+Single-trace fitting (especially on experimental data) is underdetermined: many parameter combinations produce the same firing pattern under one stimulus protocol but disagree under others.
 To exploit this, we extend the loss to a sum over $K$ stimulus protocols sharing the same parameters,
 \begin{equation}
     \mathcal{L}_{\mathrm{multi}}(\theta) = \frac{1}{K} \sum_{k=1}^{K} \mathcal{L}\bigl(V_{\mathrm{sim}}(t; \theta, I_k),\, V_{\mathrm{exp},k}(t)\bigr),
@@ -386,61 +393,112 @@ where $\{I_k\}$ is a fixed set of step currents at different amplitudes.
 The averaged gradient combines temporal credit assignment from regimes that elicit spikes with subthreshold information from regimes that do not,
 constraining adaptation parameters ($a$, $b$, $\tau_w$) that are otherwise weakly identifiable from a single trace.
 
-\subsubsection{Standard regularisers.}
+Multi-trace optimisation was implemented but is not used in the recovery benchmark of \cref{sec:method:recovery-benchmark}.
+Two reasons: it multiplies simulation cost by $K$ at every gradient step, which made the per-trial budget incompatible with the sweep size we wanted to run;
+and the averaged loss is fragile when one of the $K$ stimulation regimes drives the model into a non-spiking or numerically chaotic regime, in which case a single trace can dominate $\nabla\mathcal{L}_{\mathrm{multi}}$ and overwhelm signal from the others.
+Both issues are addressable — trace selection or per-trace loss weighting for the second, vmap-batched simulation for the first ---
+neither was within the scope of this thesis.
+We expect this technique to be necessary rather than optional once the target is experimental data, where ground-truth parameters are not available to confirm recovery and identifiability must come entirely from the loss.
+
+\subsubsection{Standard regularisers}
 We also evaluated the more common stabilisers --- gradient-norm clipping and exponential learning-rate decay ---
 as drop-in alternatives to Polyak when the latter is disabled.
 These were ultimately not retained in the reported configurations (\cref{tab:training-params})
 because, on the diagnoses summarised in \cref{sec:results:failure-modes},
 clipping and decay only modulate the magnitude of the update and cannot recover information that is already lost on the non-spiking plateau.
 
-\subsection{Optimisation Setup}\label{sec:optimization-setup}
-\itodo{
-Write about training notebooks.\\
-$\rightarrow$ In isolation, Guarino and VanRossum can fit membrane parameters (see n=1 example)\\
-$\rightarrow$ Parameters $a, b, \tau_w$ we were not able to fit (not too big of a problem, because they may be infereable)\\
-$\rightarrow$ Requires carefule hyperparameter tinkering, (arguably luck) to get learning rates just right.\\
-$\rightarrow$ Both loss functions do not generalise, see table with tests.
-}
+\subsection{Recovery-Radius Benchmark}\label{sec:method:recovery-benchmark}
+The training notebooks (\cref{sec:results:positive-example} and the per-loss subsections of \cref{ch:results}) establish that gradient-based optimisation with surrogate gradients and Polyak step-size normalisation \emph{can} recover \emph{some} \gls{AdEx} membrane parameters in some configurations.\mtodo{Does this still need an introduction in the methodology section?}
+What they do not establish is \emph{how reliable} the recovery is, or how it compares against derivative-free baselines on the same target.
+A worked example shows what the optimiser does at one operating point;
+to draw conclusions about gradient-based fitting as a method, we need a protocol that varies the difficulty of the recovery task systematically and that compares methods on matched problem instances.
+This subsection specifies that protocol; the corresponding results are reported in \cref{sec:results:baseline}.
+
+\subsubsection{Protocol}
+We want to observe recovery behaviour in different spiking regimes.
+For that reason, we used three scenarios: tonic, adaptation and initial bursting --- each corresponding to one of the Naud reference parameter sets~\cite{Naud2008}.
+We treat the ground-truth parameter vector $\theta^{*}\in\mathbb{R}^{|\theta|}$ as the recovery target and generate a target voltage trace by simulating the validated \gls{AdEx} channel of \cref{sec:method:adex_impl} under a fixed step current.
+Then, we construct a family of perturbed initialisations
+\begin{equation}\label{eq:perturb}
+    \theta_0(\delta, k) \;=\; \mathrm{clip}_{[\theta_{\min},\theta_{\max}]}\!\Bigl( \theta^{*} + \delta \cdot u_k \odot (\theta_{\max} - \theta_{\min}) \Bigr),
+\end{equation}
+where $u_k\in\mathbb{S}^{|\theta|-1}$ are unit vectors drawn uniformly on the sphere (Gaussian sampling followed by $L^{2}$-normalisation), $\delta$ is a relative perturbation scale, and the elementwise product $\odot$ with $(\theta_{\max}-\theta_{\min})$ rescales each parameter to its bound width so that $\delta$ has the same meaning across heterogeneous units (pF, nS, mV, ms).
+The clip operation handles the case where a perturbed component falls outside its parameter bounds.
+
+For every $(\text{scenario}, \delta, k)$ we run each method from $\theta_0(\delta, k)$ to obtain a recovered parameter vector $\hat\theta$, and report the coincidence factor $\Gamma(\hat\theta)$ (\cref{eq:gamma}, $\Delta = 2$\,ms) computed on a clean (non-surrogate) forward simulation at $\hat\theta$.
+A run counts as \emph{successful} when $\Gamma(\hat\theta) > 0.5$, following the success threshold fixed in \cref{sec:method:evaluation-metrics}.
+The headline statistic is the success probability $P(\Gamma > 0.5 \mid \delta)$ as a function of the perturbation scale, faceted by scenario and one curve per method;
+the \emph{recovery radius} of a method is then the largest $\delta$ for which $P(\Gamma>0.5)\geq 0.5$.
+
+\subsubsection{Scope}
+The benchmark deliberately fixes a number of choices to keep the number of confounded factors manageable.
+
+Trainable parameters are restricted to the six membrane parameters $\{C_m, g_L, E_L, V_T, \Delta_T, V_r\}$.
+The adaptation parameters $\{a, b, \tau_w\}$ are held at their ground-truth values during optimisation;
+we were not able to fit them well (\cref{sec:results:training}) in any single-trace step-current experiments.
+In principle these parameters are observable through dedicated subthreshold ramps and periodic spike-evoking pulses~\cite{Brette2005}, but those stimuli are absent from the protocol used here.
+By treating them as out-of-scope here, we can investigate what gradient-based fitting can do for membrane parameters.
+
+Targets are synthetic: ground-truth and recovered parameters share the same forward model, so any failure to recover is attributable to the loss function and the optimiser rather than to model--data mismatch.
+
+Stimuli are single step currents (5\,ms delay, 90\,ms duration, 100\,ms total simulation, $\Delta t = 0.025$\,ms), matching the configuration used in the per-loss training notebooks so that the benchmark and the worked examples speak about the same regime.
+Multi-trace optimisation, although described in \cref{sec:training-stabilization}, is held out of this benchmark due to the reasons described above.
+
+\subsubsection{Methods}
+We compare five methods (\cref{tab:training-params}), chosen so that the comparison isolates three questions: \emph{which differentiable loss best supports gradient-based recovery}, \emph{how a strong derivative-free baseline performs on the most informative of those losses}, and \emph{whether the differentiable approximations introduced for the gradient methods cost the derivative-free baseline anything in turn}.
+The three gradient methods (\texttt{grad\_mse}, \texttt{grad\_guarino}, \texttt{grad\_vanrossum}) share the same Polyak optimiser configuration, surrogate kernel, and parameter reparameterisation;
+they differ only in the loss they minimise.
+The fourth method (\texttt{nm\_guarino}) runs Nelder--Mead on the soft Guarino objective, evaluating the same loss function as \texttt{grad\_guarino} but ignoring its gradient.
+This pairing makes the gradient-vs-derivative-free comparison a like-for-like contrast on a single loss surface, rather than a comparison of two methods that also differ in their objective.
+The fifth method (\texttt{nm\_guarino\_hard}) runs Nelder--Mead on the \emph{hard-feature} Guarino objective: the eight features are computed by exact threshold crossings on the simulated and target traces, with no temperature, sigmoid sharpness, or soft validity gates.
+This is the loss Guarino et al.~\cite{Guarino2025} themselves use with an evolutionary-algorithm pipeline;
+including it lets us separate \emph{the cost of soft-feature approximations to the derivative-free baseline} from \emph{the cost of the surrogate gradient to the gradient methods}, which the soft \texttt{nm\_guarino} alone cannot do.
+
+\subsubsection{Paired directions}
+Within a scenario, a single set of $N_{\text{dir}} = 30$ unit-sphere directions is drawn once from a fixed RNG seed and reused across all $(\delta, \text{method})$ cells;
+the same direction $u_k$ therefore generates the initialisation $\theta_0(\delta, k)$ at every $\delta$, and every method is evaluated on that identical initialisation.
+Cross-method comparisons at fixed $(\text{scenario}, \delta, k)$ are therefore matched on the underlying perturbation:
+when one method succeeds and another fails on the same direction, this is a per-instance difference in optimisation behaviour rather than a sample-variance artefact between independent direction sets.
+
+\subsubsection{Grid and sample sizes}
+We use $\delta \in {0.02, 0.05, 0.1, 0.2, 0.4, 0.8}$, spanning from near-recovery ($\sim$2\% of bound width, no clipping) to perturbations large enough that most initialisations are pinned to at least one parameter bound ($\sim$90\% of runs at $\delta = 0.8$; see \cref{tab:clipping}).
+The headline curves should be interpreted as basin-of-attraction estimates at small $\delta$ and as feasibility-projected recovery at large $\delta$.
 
 \begin{table}[t]
-\centering
-\caption{Training hyperparameters for AdEx optimization}
-\label{tab:training-params}
-\begin{tabular}{lcccc}
-\toprule
-\textbf{Parameter} & \textbf{MSE} & \textbf{Guarino} & \textbf{Van Rossum} & \textbf{Nelder-Mead} \\
-\midrule
-\multicolumn{5}{l}{\textit{Optimization}} \\
-Optimizer & \multicolumn{3}{c}{Polyak} & ---\\
-Learning rate & \multicolumn{3}{c}{0.05} & --- \\
-Function Evaluations & \multicolumn{3}{c}{250} & 500 \\
-\midrule
-\multicolumn{5}{l}{\textit{Surrogate Gradient}} \\
-Surrogate type & \multicolumn{3}{c}{sigmoid} & ---\\
-Surrogate slope & \multicolumn{3}{c}{5.0} & ---\\
-\midrule
-\multicolumn{5}{l}{\textit{Loss-Specific Parameters}} \\
-Normalize & False & --- & --- & ---\\
-Temperature ($\tau$) & --- & 0.3 & --- & --- \\
-Beta ($\beta$) & --- & 10.0 & --- & --- \\
-Missing feature penalty & --- & 3.0 & --- & --- \\
-$\tau$ & --- & --- & 10ms & --- \\
-\midrule
-\multicolumn{5}{l}{\textit{Simulation}} \\
-Max stimulus duration & \multicolumn{4}{c}{100\,ms} \\
-Spike threshold & \multicolumn{4}{c}{$0$\,mV} \\
-\bottomrule
-\end{tabular}
+  \centering
+  \caption{Fraction of recovery-benchmark initialisations with at
+  least one parameter clipped to a bound, as a function of
+  perturbation scale $\delta$. Averages are over the 90 runs per
+  $\delta$ (3 scenarios $\times$ 30 directions). At large $\delta$
+  most initialisations lie on a face of the feasibility box rather
+  than on the sphere of radius $\delta$ around $\theta^{*}$; the
+  headline curves should be read as basin-of-attraction estimates
+  at small $\delta$ and as feasibility-projected recovery at large
+  $\delta$.}
+  \label{tab:clipping}
+  \begin{tabular}{rrrr}
+  \toprule
+  $\delta$ & \% runs clipped & mean \# clipped & max \# clipped \\
+           &                 & (of 6 params)   & (of 6 params)  \\
+  \midrule
+  0.02 &  0.0\% & 0.00 & 0 \\
+  0.05 &  0.0\% & 0.00 & 0 \\
+  0.10 & 10.0\% & 0.10 & 1 \\
+  0.20 & 37.8\% & 0.39 & 2 \\
+  0.40 & 65.6\% & 0.77 & 2 \\
+  0.80 & 90.0\% & 1.62 & 4 \\
+  \bottomrule
+  \end{tabular}
 \end{table}
 
+Three scenarios (\texttt{tonic}, \texttt{adaptation}, \texttt{initial\_bursting}) cover the qualitatively distinct firing patterns over which an \gls{AdEx} fit must generalise.
+Total: $5 \times 3 \times 6 \times 30 = 2700$ runs per benchmark execution.
+For each $(\text{scenario}, \delta)$ tuple we compare $\Gamma$ distributions between methods using the two-sample Kolmogorov--Smirnov test on the $N_{\text{dir}} = 30$ recovered $\Gamma$ values per method.
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-\section{Test Environment}\label{sec:testenv}
-\itodo{Change section title}
-\itodo{Write what test environment is (mostly macbook)}
-
-\iwarning{I deleted the chapter for implementation.
-I think it's better suited as an integrated part of the methoodology.
-Note from Eric: Not too much focus on implementation!}
+\subsubsection{Compute environment}
+All benchmark runs are executed on a single MacBook Pro (Apple Silicon) with JAX configured to the CPU backend (\texttt{jax\_platform\_name="cpu"}) for reproducibility across machines without an accelerator;
+gradient methods complete in $\sim 1$\,s per run after \gls{JIT} warm-up, Nelder--Mead in $\sim 5$--$10$\,s per run.
+The hard-feature variant \texttt{nm\_guarino\_hard} runs unjitted on every function evaluation (the spike-detection step uses host-side numpy), but a single forward simulation amortises this so the per-run wall time stays in the same range as the soft NM variant.
+Total benchmark wall time is approximately $2$\,h.
+The hyperparameters in \cref{tab:training-params} are the configurations validated in the per-loss training notebooks of \cref{sec:results:training};
+no per-scenario tuning is applied within the benchmark.

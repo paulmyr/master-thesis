@@ -143,26 +143,102 @@ This confirms the intuition that pixel-wise distances on voltage traces are ill-
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\section{Derivative-Free Baseline}\label{sec:results:baseline}
-\itodo{Write baseline results: Nelder-Mead and Random Search}
+\section{Recovery-Radius Benchmark}\label{sec:results:baseline}
+
+The per-loss subsections of \cref{sec:results:training} establish what gradient-based fitting can do at single, hand-chosen operating points.
+The benchmark of \cref{sec:method:recovery-benchmark} aggregates this picture over $5\,\text{methods}\times 3\,\text{scenarios}\times 6\,\text{perturbations}\times 30\,\text{directions}=2700$ paired runs, producing a recovery-success curve per method and a single recovery radius per (scenario, method) pair.
+
+\subsection{Headline result: success vs.\ perturbation}
+\Cref{fig:recovery-radius} shows $P(\Gamma > 0.5)$ as a function of the perturbation scale $\delta$, with one panel per scenario and one curve per method.
+A no-optimisation floor (\texttt{init\_floor}, the success rate of the perturbed initialisation evaluated without any update) is included as a reference; methods below this floor have regressed.
+
+\begin{figure*}[t]
+  \begin{center}
+    \includegraphics[width=\textwidth]{figures/recovery_radius_curves.pdf}
+  \end{center}
+  \caption{Recovery success $P(\Gamma > 0.5)$ as a function of the relative perturbation scale $\delta$, per scenario.
+Each curve aggregates 30 paired random-direction perturbations; methods are evaluated on identical $(\theta^*+\delta u_k)$ initialisations within each scenario.
+The $\Gamma > 0.5$ threshold follows \cref{sec:method:evaluation-metrics}; the dashed horizontal at $0.5$ marks the success-probability level used to define the recovery radius.
+\texttt{init\_floor} reports $\Gamma$ at the perturbed initialisation with no optimisation applied.}\label{fig:recovery-radius}
+\end{figure*}
+
+Four observations stand out.
+First, both Nelder--Mead variants dominate every gradient method on every scenario at every $\delta$: they have the largest recovery radii and the highest success rates inside them.
+Second, gradient methods cluster tightly together at small $\delta$ (where any sensible loss is locally informative) and separate at large $\delta$ (where the loss landscape's non-spiking plateau --- characterised in \cref{sec:results:landscape} --- dominates the picture);
+Van Rossum tracks Guarino on \texttt{tonic} and \texttt{initial\_bursting} but pulls ahead on \texttt{adaptation}, where temporal credit assignment via the exponential kernel matters more.
+Third, \texttt{grad\_mse} sits at or below the \texttt{init\_floor} on every scenario for every $\delta$, confirming \cref{sec:results:mse}: pointwise voltage \gls{MSE} actively pulls the optimiser into the non-spiking subthreshold regime, so for most random directions training \emph{worsens} the fit relative to the perturbed initialisation.
+Fourth, the two Nelder--Mead variants are indistinguishable: \texttt{nm\_guarino\_hard} and \texttt{nm\_guarino} report identical $\delta_{50}\in\{0.2,0.2,0.4\}$ and identical median $\Gamma_{0.05}=+1.00$ on every scenario, and their per-direction success counts match cell-for-cell to within one direction.
+This is the expected outcome for a faithful soft approximation, and we read it as evidence that the soft features Guarino et al.~\cite{Guarino2025} introduced track the exact-feature Guarino loss closely enough that a derivative-free optimiser does not distinguish them.
+
+\subsection{Soft vs.\ hard features for Nelder--Mead}\label{sec:results:nm-soft-vs-hard}
+The Guarino objective is differentiable only because every feature it extracts has been replaced by a soft approximation (\cref{sec:feature-loss}).
+The gradient methods require these approximations;
+Nelder--Mead does not.
+The \texttt{nm\_guarino} method retains the soft features so that the loss surface evaluated by Nelder--Mead is identical to the loss surface seen by \texttt{grad\_guarino}, isolating the optimiser effect from the objective.
+The complementary configuration \texttt{nm\_guarino\_hard} drops the soft approximations entirely and runs the same Nelder--Mead simplex on the exact-feature Guarino loss --- the configuration Guarino et al.~\cite{Guarino2025} themselves use with evolutionary search.
+
+The two variants produce identical recovery radii on every scenario and identical median $\Gamma$ at $\delta=0.05$ (\cref{tab:results-summary});
+beyond the aggregate, their per-direction outcomes also match almost exactly, with the worst per-(scenario,\,$\delta$) discrepancy being a single direction out of 30.
+Empirically, then, the soft features are a faithful surrogate for the true Guarino objective in the regime of perturbations this benchmark spans:
+at the precision required to distinguish recovery success ($\Gamma>0.5$) and at the $50$-evaluation budget the simplex runs on, the soft objective and the hard objective induce the same simplex trajectory and the same recovered parameter set.
+
+This rules out two natural objections to the headline comparison between gradient methods and \texttt{nm\_guarino}.
+First, it is not the case that \texttt{nm\_guarino} ``cheats'' by being evaluated on a smoothed loss that the gradient methods would not see ---
+on the hard loss it would not actually see (because it does not consume gradients), the simplex achieves the same radius.
+Second, the gap between gradient methods and the simplex is not a soft-feature-bias artefact:
+the soft features themselves are not biasing the objective enough to matter for the simplex, so they cannot be the dominant reason gradient descent fails to match the simplex's radius.
+What remains, and what the next chapter argues drives the gap, is the surrogate gradient itself and the non-spiking plateau (\cref{sec:results:landscape}) over which it points in a biased direction.
+
+\subsection{Recovery radii}
+\Cref{tab:results-summary} reports two summary statistics per (scenario, method) pair:
+the recovery radius $\delta_{50}$ (the largest grid value of $\delta$ for which $P(\Gamma>0.5)\geq 0.5$) and the median $\Gamma$ over all directions at $\delta = 0.05$.
+The median at $\delta = 0.05$ is the most diagnostic single number: $\delta = 0.02$ is too easy (every reasonable method scores well) and $\delta \geq 0.2$ is too hard for the gradient methods (most rows are non-spiking failures dominated by the surrogate's plateau gradient).
 
 \begin{table}[t]
 \centering
-\caption{Summary of final coincidence factor $\Gamma$ across methods on the synthetic single-trace task. Positive $\Gamma$ denotes better-than-chance spike-timing prediction; $\Gamma \approx 0.82$ is the state-of-the-art level reported by Jolivet et al.~\cite{Jolivet2008}.}
+\caption{Recovery-radius benchmark summary. $\delta_{50}$ is the largest grid value of $\delta\in\{0.02,0.05,0.1,0.2,0.4,0.8\}$ for which $P(\Gamma>0.5)\geq 0.5$ over the 30 paired directions ($\delta_{50} < 0.02$ written as ``--'' when even the smallest perturbation does not reach 50\% success). $\Gamma_{0.05}$ is the median $\Gamma$ over directions at $\delta=0.05$. State-of-the-art $\Gamma$ on real recordings is $\approx 0.82$~\cite{Jolivet2008}; the benchmark uses synthetic targets, so the achievable ceiling is $\Gamma=1$.}
 \label{tab:results-summary}
-\begin{tabular}{lcc}
+\small
+\begin{tabular}{lcccccc}
 \toprule
-\textbf{Method / Loss} & \makecell{\textbf{Spike count}\\(sim/target)} & \textbf{$\Gamma$} \\
+& \multicolumn{2}{c}{\textbf{tonic}} & \multicolumn{2}{c}{\textbf{adaptation}} & \multicolumn{2}{c}{\textbf{initial\_bursting}} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+\textbf{Method} & $\delta_{50}$ & $\Gamma_{0.05}$ & $\delta_{50}$ & $\Gamma_{0.05}$ & $\delta_{50}$ & $\Gamma_{0.05}$ \\
 \midrule
-MSE           & \ttodo  & \ttodo \\
-Guarino       & \ttodo  & \ttodo \\
-Van Rossum    & \ttodo  & \ttodo \\
+\texttt{grad\_mse}         & --     & $+0.00$ & --     & $+0.00$ & --     & $+0.00$ \\
+\texttt{grad\_guarino}     & $0.02$ & $+0.13$ & --     & $+0.28$ & $0.02$ & $+0.19$ \\
+\texttt{grad\_vanrossum}   & --     & $+0.07$ & $0.05$ & $+0.62$ & $0.02$ & $+0.12$ \\
+\texttt{nm\_guarino}       & $0.2$  & $+1.00$ & $0.2$  & $+1.00$ & $0.4$  & $+1.00$ \\
+\texttt{nm\_guarino\_hard} & $0.2$  & $+1.00$ & $0.2$  & $+1.00$ & $0.4$  & $+1.00$ \\
 \midrule
-\makecell{Simplex (Nelder--Mead)\\Van Rossum obj.} & \ttodo & \ttodo\\
-Random Search & \ttodo & \ttodo\\
+\texttt{init\_floor}       & $0.02$ & $+0.07$ & $0.02$ & $+0.32$ & $0.02$ & $+0.01$ \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\subsection{Per-parameter recovery error}
+The success rate $P(\Gamma>0.5)$ aggregates over the entire parameter vector and tells us nothing about \emph{which} parameters individual methods recover.
+\Cref{fig:recovery-per-param} breaks the same runs down by parameter, reporting the median absolute recovery error
+$|\hat\theta_i - \theta^*_i| / (\theta_{\max,i} - \theta_{\min,i})$
+at $\delta = 0.05$.
+The membrane parameters $\{C_m, g_L, E_L, V_T, \Delta_T, V_r\}$ are the only optimisation targets in this benchmark (\cref{sec:method:recovery-benchmark});
+the adaptation parameters $\{a, b, \tau_w\}$ are held at ground truth, so their bars are zero by construction and exist only to make explicit which axes the benchmark deliberately does not interrogate.
+This separation is the bridge into the limitation discussed in the next section: \emph{nothing in this benchmark constrains adaptation parameters, because we already know from \cref{sec:results:training} that single-trace fits cannot identify them.}
+
+\begin{figure}[t]
+  \begin{center}
+    \includegraphics[width=0.95\textwidth]{figures/recovery_per_parameter.pdf}
+  \end{center}
+  \caption{Median per-parameter recovery error at $\delta = 0.05$, by method and scenario.
+Errors are normalised by parameter bound width.
+Adaptation parameters are visually separated to emphasise that they are held at ground truth in this benchmark; their identifiability from a single trace is discussed in \cref{sec:results:failure-modes}.}\label{fig:recovery-per-param}
+\end{figure}
+
+\subsection{What the benchmark does not measure}
+Three caveats determine how far the conclusions in \cref{sec:results:failure-modes,ch:discussion} are entitled to go.
+\textbf{Synthetic targets.} The benchmark recovers parameters of a model from data generated by the same model, so it measures the optimisation problem in isolation, not the model--data mismatch one would face on real recordings; this is by design (\cref{sec:method:recovery-benchmark}) but means the radii reported here are upper bounds on what the same setup achieves experimentally.
+\textbf{Single trace.} A single 100\,ms step current is not enough to pin down the adaptation parameters; the multi-trace extension of \cref{sec:training-stabilization} addresses this and is reported as a separate ablation rather than mixed into the benchmark.
+\textbf{Fixed hyperparameters.} The configurations in \cref{tab:training-params} are the validated single-stage settings; per-scenario or per-$\delta$ HP tuning would shift radii up but is exactly the kind of tuning the user does not have when fitting a real cell. The radii reported here are therefore meant to characterise the methods as one would actually deploy them, not their best possible behaviour under unconstrained tuning.
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

@@ -463,6 +463,53 @@ ger
 
 \chapter{Figures and Tables}
 
+\section{Detailed Experiment Configuration}
+\begin{landscape}
+\begin{table}[t]
+\centering
+\caption{Method configurations for the recovery-radius benchmark. The three gradient methods share an identical optimiser, surrogate, and parameter-transform setup; they differ only in the loss function. \texttt{nm\_guarino} optimises the same soft Guarino loss with Nelder--Mead, evaluating but not consuming the surrogate gradient. \texttt{nm\_guarino\_hard} optimises the same loss composition with \emph{hard} feature extraction (threshold-crossing spike detection on both simulated and target traces), so the soft-feature hyperparameters $\tau$, $\beta$, $\beta_v$ vanish from its configuration.}
+\label{tab:training-params}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Parameter} & \texttt{grad\_mse} & \texttt{grad\_guarino} & \texttt{grad\_vanrossum} & \texttt{nm\_guarino} & \texttt{nm\_guarino\_hard} \\
+\midrule
+\multicolumn{6}{l}{\textit{Optimiser}} \\
+Algorithm                 & \multicolumn{3}{c}{Polyak SGD}                                & \multicolumn{2}{c}{Nelder--Mead} \\
+Learning rate             & \multicolumn{3}{c}{$0.001$}                                   & \multicolumn{2}{c}{---} \\
+Polyak $(\alpha,\beta)$   & \multicolumn{3}{c}{$(0.8,\,0.6)$}                             & \multicolumn{2}{c}{---} \\
+Steps / max function evals & \multicolumn{3}{c}{25 gradient steps}                         & \multicolumn{2}{c}{50 evals} \\
+NM tolerances $(x_{\text{atol}}, f_{\text{atol}})$ & \multicolumn{3}{c}{---}                & \multicolumn{2}{c}{$(10^{-4},\,10^{-4})$, adaptive} \\
+Parameter transform       & \multicolumn{3}{c}{sigmoid (\cref{sec:training-stabilization})} & \multicolumn{2}{c}{box-bounded} \\
+\midrule
+\multicolumn{6}{l}{\textit{Surrogate gradient (gradient methods only)}} \\
+Surrogate type            & \multicolumn{3}{c}{SuperSpike (\cref{eq:superspike-surrogate})} & \multicolumn{2}{c}{not consumed} \\
+Surrogate slope $\beta$   & \multicolumn{3}{c}{$6.0$}                                     & \multicolumn{2}{c}{---} \\
+\midrule
+\multicolumn{6}{l}{\textit{Loss-specific parameters}} \\
+Feature extraction        & ---   & soft    & ---     & soft    & hard \\
+MSE: normalise            & False & ---     & ---     & ---     & --- \\
+MSE: voltage clamp        & none  & ---     & ---     & ---     & --- \\
+Guarino: feature temp.\ $\tau$ & --- & $0.5$ & ---   & $0.25$  & --- \\
+Guarino: sigmoid sharpness $\beta$ & --- & $10.0$ & --- & $10.0$ & --- \\
+Guarino: validity $\beta_v$ & --- & $10.0$ & ---    & $10.0$  & --- \\
+Guarino: spike-count weight & --- & $0.1$ & ---     & $0.0$   & $0.0$ \\
+Guarino: missing-feature penalty & --- & $3.0$ & --- & $3.0$  & $3.0$ \\
+Van Rossum: kernel $\tau$ & ---   & ---     & $8$\,ms & ---   & --- \\
+Van Rossum: subthreshold $\lambda_{\text{sub}}$ & --- & --- & $0.3$ & --- & --- \\
+\midrule
+\multicolumn{6}{l}{\textit{Simulation (shared)}} \\
+Time step $\Delta t$       & \multicolumn{5}{c}{$0.025$\,ms} \\
+Total / stimulus duration & \multicolumn{5}{c}{$100\,$ms / $90\,$ms (5\,ms delay)} \\
+Spike threshold            & \multicolumn{5}{c}{$0$\,mV} \\
+\bottomrule
+\end{tabular}
+\end{table}
+\end{landscape}
+
+
+
 \section{Loss Landscape Analysis}\label{sec:app:loss}
 \ierror{This whole section reads like Methodology + Results, not appendix material. The setup paragraph (28 pairs, 11{,}200 simulations, 3.8\,h compute) belongs in Methodology, and the cross-loss plateau comparison (todo at end of section) belongs in Results. Consider moving the prose into \texttt{4\_methodology.tex} / \texttt{5\_results.tex} and leaving only figure plates here, if anything.}
 To characterise the optimisation problem independently of any particular training run, we computed each of the four loss functions on a dense two-parameter grid ($20 \times 20 = 400$ points per pair) for 28 parameter pairs, for a total of $11{,}200$ simulations and $\sim$3.8\,h of compute.
@@ -494,7 +541,7 @@ The local minima are less pronounced than in the \gls{MSE} landscape, even thoug
 The global minima are more accessible and distinct compared to the others.}\label{fig:results:vanrossum-loss-landscape}
 \end{figure}
 
-\begin{figure}[t]
+\begin{figure}
   \begin{center}
     \includegraphics[width=\textwidth]{figures/guarino_loss_landscape_grid.pdf}
   \end{center}
