@@ -82,7 +82,7 @@ These results demonstrate that simplified models \emph{can} reproduce experiment
 
 The precision parameter $\Delta$ in $\Gamma$ controls the temporal tolerance for counting coincident spikes: small $\Delta$ requires near-exact spike alignment, while large $\Delta$ tolerates timing errors.
 This mirrors the role of the time constant $\tau$ in the Van Rossum distance (Section~\ref{sec:bg:loss:categories}), where small $\tau$ emphasises temporal coding and large $\tau$ emphasises rate coding.
-Both metrics parameterise the same fundamental trade-off between spike timing precision and overall firing rate agreement.
+In both metrics, a tolerance parameter ($\Delta$ or $\tau$) sets how strictly spike times must align to count as a match.
 
 \section{Loss Functions for Neuron Model Fitting}\label{sec:rw:loss}
 

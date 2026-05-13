@@ -15,7 +15,7 @@ The remainder of this chapter is organised as follows.
 \section{An AdEx Channel for Jaxley}\label{sec:results:verification}
 
 The first concrete outcome of this thesis is a working \gls{AdEx} channel for \texttt{Jaxley}, validated against an established reference simulator.
-Following the protocol of \cref{sec:verification}, we compare our implementation to Brian2 \cite{Stimberg2019} on all three reference parameter sets from Naud et al.~\cite{Naud2008} --- tonic, adaptation and original --- which together cover the qualitatively distinct firing regimes \gls{AdEx} is meant to reproduce.
+Following the protocol of \cref{sec:method:adex:verification}, we compare our implementation to Brian2 \cite{Stimberg2019} on all three reference parameter sets from Naud et al.~\cite{Naud2008} --- tonic, adaptation and original --- which together cover the qualitatively distinct firing regimes \gls{AdEx} is meant to reproduce.
 
 Across all three configurations, the two simulators produce identical spike counts, and the maximum pair-wise spike-timing difference stays below $1$\,ms.
 \Cref{fig:brian_comparison} shows the side-by-side comparison of voltage traces, adaptation current $w$, and spike times.
@@ -40,6 +40,37 @@ The same implementation pattern carries over to other simplified models such as 
 Second, and more importantly for the rest of this chapter: every optimisation failure we report from here on can be discussed as a property of gradient-based training and loss-function design, rather than as a possible artefact of the underlying dynamics.
 The forward model is not the bottleneck.
 
+\subsection{Surrogate Channel Verification}\label{sec:results:verification:surrogate}
+\begin{figure*}
+  \begin{center}
+    \includegraphics[width=\textwidth]{figures/surrogate_vs_non-surrogate_comparison}
+  \end{center}
+  \caption{Comparison of \texttt{AdEx} and \texttt{AdExSurrogate} channels. Both produce identical voltage traces as expected.}\label{fig:surrogate-channel-verification}
+\end{figure*}
+
+We run the two-part verification protocol of \cref{sec:method:surrogate-gradients:verification}.
+On all three Naud parameter sets, the forward pass of \texttt{AdExSurrogate} matches the standard \texttt{AdEx} channel perfectly.
+Both voltage trace and spike times are identical as can be seen in \cref{fig:surrogate-channel-verification}.
+For the gradient-existence check, both channels report $\mathcal{L} = -21$ on the tonic set at the operating point; the gradients are summarised in \cref{tab:surrogate-gradient}.
+
+\begin{table}[h]
+  \centering
+  \caption{Gradient of the negative spike count with respect to \texttt{v\_threshold} on the tonic parameter set ($\mathcal{L} = -21$ in all rows).}\label{tab:surrogate-gradient}
+  \begin{tabular}{lr}
+    \toprule
+    Channel & $\partial\mathcal{L}/\partial v_{\text{th}}$ \\
+    \midrule
+    \texttt{AdEx} (hard threshold)                       & $0$ exactly \\
+    \texttt{AdExSurrogate}, sigmoid ($\beta = 10$)       & $+1.9 \times 10^{-21}$ \\
+    \texttt{AdExSurrogate}, exponential ($\beta = 5$)    & $+4.5 \times 10^{-4}$ \\
+    \texttt{AdExSurrogate}, SuperSpike ($\beta = 10$)    & $+1.3 \times 10^{-1}$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The hard channel returns a structural zero; all three surrogates return a finite gradient of the correct sign.
+At a fixed operating point the magnitudes span more than twenty orders of magnitude --- a property of the surrogate family alone (cf.\ \cref{fig:surr_grads}) --- which couples directly to learning-rate sensitivity in \cref{sec:results:training}.
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Loss Function Analysis}\label{sec:results:landscape}
 
@@ -49,18 +80,20 @@ We were only able to fit the AdEx model using the latter two in isolated instanc
 With \gls{MSE}, \gls{SDTW}, summary statistics and other loss functions, we were not successful in any test whatsoever.
 
 To better understand these loss functions, we plotted loss landscapes.
-We fixed the parameters at the adaptive scenario described in \ref{}\mtodo{Table with adaptive NAUD spiking paramters}.
+We fixed the parameters at the adaptive scenario described in \ref{sec:method:adex:verification}.
 Then, we varied two parameters in an 20x20 grid, bounded by the parameter bounds.
 \Cref{sec:app:loss} (appendix) shows all 28 surfaces for the feature-based loss.
 The qualitative picture repeats across loss functions:
 
 \begin{itemize}
-  \item \textbf{Massive non-spiking plateaus.} Large regions of parameter space produce no spikes at all and yield a constant (or near-constant) loss. For the feature-based loss this plateau value exceeds $10^{5}$ and dominates the total volume of the grid.
-  \item \textbf{Narrow low-loss valleys.} The spiking region forms thin, curved valleys rather than isotropic basins. Valleys are often parallel to one axis (e.g.\ $g_L$--$E_L$ trades off along a single direction), meaning small updates along the wrong axis leave the loss unchanged.
-  \item \textbf{Gradient direction outside the valley.} Because the plateau is flat, gradients on the plateau are dominated by soft spike-detection terms rather than by the true distance to a spiking solution. The optimiser therefore cannot recover once it has been pushed onto the plateau.
+  \item \textbf{Narrow low-loss valleys.} The spiking region forms thin, curved valleys rather than isotropic basins.
+        Valleys are often parallel to one axis (e.g.\ $g_L$--$E_L$ trades off along a single direction),
+        meaning small updates along the wrong axis leave the loss unchanged.
+  \item \textbf{Massive loss plateaus.} Large regions of parameter space yield a constant (or near-constant) loss.
+        This can easily result in tiny or zero gradients for a large subset of all possible initial values.
+  \item \textbf{Gradient direction outside the valley.} Because the plateau is flat, gradients on the plateau may be dominated by soft spike-detection terms rather than by the true distance to a spiking solution.
+        It is unlikely that the optimiser recovers once it has been pushed onto the plateau.
 \end{itemize}
-
-
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Parameter Recovery by Loss Function}\label{sec:results:training}
@@ -76,14 +109,14 @@ The headline result is mixed.
 We were not able to recover adaption parameter $a, b, \tau_w$.
 Gradient-based fitting can recover the other \gls{AdEx} Parameters in all of these regimes when peturbations are small --- we open the section with one such success in \cref{sec:results:positive-example} as a worked example to establish that the approach is viable in principle.
 However, recovery is fragile:
-each loss required its own hand-tuned combination of learning rate, surrogate slope, and gradient clipping,
-and even with careful tuning we could not identify a single hyperparameter set that recovers parameters consistently across regimes and seeds.
-The remainder of the section unpacks this asymmetry one loss at a time.
-\Cref{sec:results:mse} shows that \gls{MSE} collapses to a non-spiking solution on every regime we tested;
-\cref{sec:results:guarino} shows that the feature-based Guarino loss can match spike counts but not timing;
-and \cref{sec:results:vanrossum} shows that the Van Rossum distance recovers timing when it converges,
-but inherits the non-spiking-plateau failure mode diagnosed in \cref{sec:results:landscape}.
-\Cref{sec:results:baseline} then aggregates over many seeds and quantifies the overall failure rate, alongside a derivative-free baseline.
+each loss required its own hand-tuned combination of learning rate, surrogate slope and loss specific parameters.
+Even with careful tuning we could not identify a single hyperparameter set that recovers parameters consistently across regimes and seeds.
+\itodo{finish the rest, e.g. overview about sub chapters\\
+- MSE loss (doesnt work at all), e.g.:
+\Cref{sec:results:mse} shows that \gls{MSE} collapses to a non-spiking solution on every regime we tested.\\
+- Gradient losses (or should I skip that?)\\
+- Recovery Radius Benchmark
+}
 
 \subsection{A Worked Example: Recovering a Tonic AdEx Cell}\label{sec:results:positive-example}
 \itodo{Positive-result subsection — single worked example before the per-loss breakdown.\\

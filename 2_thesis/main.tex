@@ -508,8 +508,6 @@ Spike threshold            & \multicolumn{5}{c}{$0$\,mV} \\
 \end{table}
 \end{landscape}
 
-
-
 \section{Loss Landscape Analysis}\label{sec:app:loss}
 \ierror{This whole section reads like Methodology + Results, not appendix material. The setup paragraph (28 pairs, 11{,}200 simulations, 3.8\,h compute) belongs in Methodology, and the cross-loss plateau comparison (todo at end of section) belongs in Results. Consider moving the prose into \texttt{4\_methodology.tex} / \texttt{5\_results.tex} and leaving only figure plates here, if anything.}
 To characterise the optimisation problem independently of any particular training run, we computed each of the four loss functions on a dense two-parameter grid ($20 \times 20 = 400$ points per pair) for 28 parameter pairs, for a total of $11{,}200$ simulations and $\sim$3.8\,h of compute.
@@ -536,21 +534,19 @@ For larger perturbations, gradients were close to 0, which can be explained by t
   \begin{center}
     \includegraphics[width=\textwidth]{figures/vanrossum_loss_landscape_grid.pdf}
   \end{center}
-  \caption{Even though the Van-Rossum loss landscape is also marked by big plateaus indicating non-spiking parameter configurations, it promises to be the most interesting candidate based on this loss landscape plots.
-The local minima are less pronounced than in the \gls{MSE} landscape, even though still present.
-The global minima are more accessible and distinct compared to the others.}\label{fig:results:vanrossum-loss-landscape}
+  \caption{The Van-Rossum loss promises to be a more interesting candidate based on these loss landscape plots.
+For example, the local minima are less pronounced than in the \gls{MSE} landscape, even though still present.
+The global minima valleys tend to be less narrow compared to \gls{SDTW}; however, they still tend to be surrounded by large loss plateaus.}\label{fig:results:vanrossum-loss-landscape}
 \end{figure}
 
 \begin{figure}
   \begin{center}
     \includegraphics[width=\textwidth]{figures/guarino_loss_landscape_grid.pdf}
   \end{center}
-  \caption{The feature-based loss shows also promising characteristics.
-It seems to be the most resistant against local minima in this testing configurations;
-however, it shows large loss plateaus which could indicate small-to-zero gradients for ill conditioned initial parameters.}\label{fig:results:guarino-loss-landscape}
+  \caption{The feature-based loss shares lots of similarities with the Van-Rossum loss.
+It seems to be the most resistant against local minima in this testing configuration.
+However, it shares the large loss plateaus which could indicate small-to-zero gradients for ill conditioned initial parameters.}\label{fig:results:guarino-loss-landscape}
 \end{figure}
-
-\itodo{Comment on how the plateau shape differs across losses --- in particular, whether Van Rossum or soft-DTW reduces plateau size relative to Guarino.}
 
 % End of Appendix
 % ----------------------------------------------------------------------------------------------
