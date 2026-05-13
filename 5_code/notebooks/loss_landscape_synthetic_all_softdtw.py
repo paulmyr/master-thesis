@@ -218,6 +218,7 @@ training_config = TrainingConfig(
     n_epochs=1,
     surrogate_type="sigmoid",
     surrogate_slope=5.0,
+    trainable_params=["C_m", "g_L", "E_L", "v_T", "v_reset"],
 )
 
 data = TraceData(
@@ -273,7 +274,7 @@ print(f"Trainable parameters ({N_PARAMS}): {PARAM_NAMES}")
 print(f"Initial parameters: {initial_params}")
 
 
-GRID_SIZE = 10  # 20x20 per pair; 21 pairs * 400 = 8400 simulations
+GRID_SIZE = 20  # 20x20 per pair; 21 pairs * 400 = 8400 simulations
 
 pairs = list(combinations(range(N_PARAMS), 2))
 print(f"{len(pairs)} parameter pairs, {GRID_SIZE}x{GRID_SIZE} grid each")
