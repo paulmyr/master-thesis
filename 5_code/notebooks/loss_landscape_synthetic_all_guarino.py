@@ -308,7 +308,7 @@ with plt.rc_context({
 
     lo = int(np.floor(np.log10(vmin)))
     hi = int(np.ceil(np.log10(vmax_clip)))
-    cbar.ax.xaxis.set_major_locator(LogLocator(base=10.0, numticks=(hi - lo + 1)))
+    cbar.ax.xaxis.set_major_locator(LogLocator(base=10.0, numticks=min(hi - lo + 1, 8)))
     cbar.ax.xaxis.set_minor_locator(
         LogLocator(base=10.0, subs=np.arange(2, 10), numticks=50)
     )
@@ -465,7 +465,7 @@ with plt.rc_context({
 
     lo = int(np.floor(np.log10(gmin)))
     hi = int(np.ceil(np.log10(gmax_clip)))
-    cbar.ax.xaxis.set_major_locator(LogLocator(base=10.0, numticks=(hi - lo + 1)))
+    cbar.ax.xaxis.set_major_locator(LogLocator(base=10.0, numticks=min(hi - lo + 1, 8)))
     cbar.ax.xaxis.set_minor_locator(
         LogLocator(base=10.0, subs=np.arange(2, 10), numticks=50)
     )
