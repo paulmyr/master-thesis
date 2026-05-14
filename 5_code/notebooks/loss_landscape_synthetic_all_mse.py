@@ -396,7 +396,7 @@ with plt.rc_context({
         if mappable is None:
             mappable = cs
 
-        step = max(1, GRID_SIZE // 6)
+        step = max(1, GRID_SIZE // 4)
         Xs = g["X"][::step, ::step]
         Ys = g["Y"][::step, ::step]
         GXs = g["GX"][::step, ::step]
@@ -407,8 +407,12 @@ with plt.rc_context({
         V = GYs / denom
         ax.quiver(
             Xs, Ys, U, V,
-            color="white", alpha=0.85, pivot="middle",
-            scale=22, width=0.012, headwidth=3.5, headlength=4,
+            color="white", edgecolor="black", linewidth=0.25,
+            alpha=0.95, pivot="middle",
+            angles="xy", scale_units="width",
+            scale=14, width=0.005,
+            headwidth=4, headlength=5, headaxislength=4.5,
+            minshaft=2, minlength=0.1,
         )
 
         ax.plot(
