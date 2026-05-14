@@ -180,7 +180,7 @@ for pair_idx, (pi, pj) in enumerate(pairs):
 
 print(f"\nTotal time: {time.time() - t_start:.0f}s")
 
-#from matplotlib.colors import LogNorm
+from matplotlib.colors import LogNorm
 from matplotlib.ticker import LogLocator, LogFormatterSciNotation, MaxNLocator
 
 PARAM_LABELS = {
