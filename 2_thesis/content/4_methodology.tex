@@ -409,7 +409,7 @@ We expect this technique to be necessary rather than optional once the target is
 We also evaluated the more common stabilisers --- gradient-norm clipping and exponential learning-rate decay ---
 as drop-in alternatives to Polyak when the latter is disabled.
 These were ultimately not retained in the reported configurations (\cref{tab:training-params})
-because, on the diagnoses summarised in \cref{sec:results:failure-modes},
+because, on the diagnoses summarised in \cref{sec:results:landscape} and \cref{ch:discussion},
 clipping and decay only modulate the magnitude of the update and cannot recover information that is already lost on the non-spiking plateau.
 
 \subsection{Recovery-Radius Benchmark}\label{sec:method:opt:recovery-benchmark}

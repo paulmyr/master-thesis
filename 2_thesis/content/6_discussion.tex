@@ -18,12 +18,12 @@ at any finite $\beta$, however, the surrogate gradient is a biased estimator of 
 It points toward minima of $\widetilde{\mathcal{L}}$, not $\mathcal{L}$, and there is no guarantee that the two sets are close at the precision required to fit individual spike times.
 
 This produces the well-known dead-neuron trade-off characterised by Gygax \& Zenke~\cite{Gygax2025}.
-A sharp surrogate ($\beta\gtrsim 25$) makes $\widetilde{\mathcal{L}}$ a tight envelope of $\mathcal{L}$, but the active window of the gradient shrinks to the order of $1/\beta$ in voltage units --- on the AdEx voltage range a $\sim$0.4\,mV window, as our diagnostics in \cref{sec:results:failure-modes} show.
+A sharp surrogate ($\beta\gtrsim 25$) makes $\widetilde{\mathcal{L}}$ a tight envelope of $\mathcal{L}$, but the active window of the gradient shrinks to the order of $1/\beta$ in voltage units --- on the AdEx voltage range a $\sim$0.4\,mV window, consistent with the surrogate kernels of \cref{fig:surr_grads} and the gradient-magnitude spread reported in \cref{tab:surrogate-gradient}.
 A broad surrogate ($\beta\sim 5$, the setting we use throughout) restores informative gradients but the minima of $\widetilde{\mathcal{L}}$ are displaced from those of $\mathcal{L}$ by a quantity that the optimiser cannot resolve.
 The benchmark numbers in \cref{sec:results:baseline} suggest that this displacement is large relative to the basin of attraction we would need to claim reliable parameter recovery: gradient methods succeed only where the perturbed initial point is already close enough to the true optimum that the bias does not move the recovered $\hat\theta$ outside the $\Gamma>0.5$ region.
 
 Two additional structural problems compound the bias.
-First, even when the per-step surrogate is well calibrated, $\sim$5000 timesteps of leak dynamics multiply many small backward terms; the resulting gradient at the parameters is dominated by numerical noise (\cref{sec:results:failure-modes}).
+First, even when the per-step surrogate is well calibrated, $\sim$5000 timesteps of leak dynamics multiply many small backward terms; the resulting gradient at the parameters is dominated by numerical noise.
 Second, most published evidence for surrogate gradients comes from population-level \gls{SNN} classification tasks, where the bias is averaged over many neurons and across loss invariances induced by the readout layer~\cite{Neftci2019, Zenke2018, Perez-Nieves2021}.
 In single-neuron \gls{AdEx} parameter fitting against an exact trace neither averaging mechanism is available, so the bias propagates directly into $\hat\theta$.
 This framing is consistent with what the benchmark shows: the optimiser is genuinely converging --- the loss does decrease, gradients are non-zero --- but it is converging on a slightly wrong objective, and the displacement between the surrogate's optimum and the true optimum is roughly the size of the gradient-method recovery radius.
