@@ -83,8 +83,8 @@ training_config = TrainingConfig(
     optimizer="adam",
     learning_rate=0.01,
     n_epochs=1,
-    surrogate_type="sigmoid",
-    surrogate_slope=5.0,
+    surrogate_type="superspike",
+    surrogate_slope=10.0,
     trainable_params=["C_m", "g_L", "E_L", "v_T", "v_reset"],
 )
 
@@ -350,7 +350,20 @@ for pair_idx, (pi, pj) in enumerate(pairs):
             except Exception:
                 pass
     MAG = np.sqrt(GX ** 2 + GY ** 2)
-    grad_grids[(pi, pj)] = {"X": X, "Y": Y, "GX": GX, "GY": GY, "MAG": MAG}
+    # Bound-normalised gradient: scale each component by its bound width
+    # so the quiver direction reflects landscape geometry rather than
+    # raw partial-derivative units (mV vs nS, etc.). Same dimensionless
+    # parametrisation as the recovery-radius benchmark perturbation.
+    SCALE_X = PARAM_BOUNDS[px].max - PARAM_BOUNDS[px].min
+    SCALE_Y = PARAM_BOUNDS[py].max - PARAM_BOUNDS[py].min
+    GX_n = GX * SCALE_X
+    GY_n = GY * SCALE_Y
+    MAG_n = np.sqrt(GX_n ** 2 + GY_n ** 2)
+    grad_grids[(pi, pj)] = {
+        "X": X, "Y": Y,
+        "GX": GX, "GY": GY, "MAG": MAG,
+        "GX_n": GX_n, "GY_n": GY_n, "MAG_n": MAG_n,
+    }
     elapsed = time.time() - t_start
     eta = elapsed / (pair_idx + 1) * (len(pairs) - pair_idx - 1)
     print(
@@ -360,7 +373,7 @@ for pair_idx, (pi, pj) in enumerate(pairs):
     )
 print(f"\nTotal time: {time.time() - t_start:.0f}s")
 
-all_M = np.concatenate([g["MAG"].ravel() for g in grad_grids.values()])
+all_M = np.concatenate([g["MAG_n"].ravel() for g in grad_grids.values()])
 positive_M = all_M[np.isfinite(all_M) & (all_M > 0)]
 gmin = float(np.min(positive_M)) if positive_M.size else 1e-12
 gmax_clip = float(np.nanpercentile(all_M, 95))
@@ -388,7 +401,7 @@ with plt.rc_context({
         ax = axes[pj, pi]
         ax.set_visible(True)
 
-        M = np.clip(g["MAG"], gmin, gmax_clip)
+        M = np.clip(g["MAG_n"], gmin, gmax_clip)
         cs = ax.contourf(
             g["X"], g["Y"], M,
             levels=glevels, cmap="magma", norm=gnorm, extend="max",
@@ -396,11 +409,11 @@ with plt.rc_context({
         if mappable is None:
             mappable = cs
 
-        step = max(1, GRID_SIZE // 4)
+        step = max(1, GRID_SIZE // 3)
         Xs = g["X"][::step, ::step]
         Ys = g["Y"][::step, ::step]
-        GXs = g["GX"][::step, ::step]
-        GYs = g["GY"][::step, ::step]
+        GXs = g["GX_n"][::step, ::step]
+        GYs = g["GY_n"][::step, ::step]
         Ms = np.sqrt(GXs ** 2 + GYs ** 2)
         denom = np.where(Ms > 0, Ms, 1.0)
         U = GXs / denom
@@ -470,7 +483,7 @@ with plt.rc_context({
     cbar.ax.tick_params(which="minor", direction="out", length=1.6, width=0.4)
     cbar.outline.set_linewidth(0.5)
     cbar.set_label(
-        rf"$\|\nabla\,${loss_name}$\|_2$ (log; clip $\geq$ {gmax_clip:.2g})",
+        rf"$\|\nabla\,${loss_name}$\,\odot\,\Delta\theta\|_2$ (log; clip $\geq$ {gmax_clip:.2g})",
         fontsize=10, labelpad=4,
     )
 
