@@ -1,79 +1,137 @@
 \chapter{Discussion}\label{ch:discussion}\deadline{May 8th}
 
-\section{The benchmark headline as a negative result}\label{sec:discussion:headline}
+% Discussion is the subjective evaluation, what did you come to, the comparison with work in Related works, for example,
+% considerations about the generality of the work (how dependent are the results on the choice of hyperparameters, for example)
+% and advantages of your choice of approach as well as disadvantages or limitations of this.
+
+
+\section{Simplified Neurons in Jaxley}\label{sec:discussion:jaxley}
+
+Independently of the optimisation results that occupy the rest of this chapter, the implementation contribution stands on its own.
+We extended \texttt{Jaxley}, still in early development, with a new \gls{AdEx} channel\footnote{We were able to contribute it to Jaxley, see \href{https://github.com/jaxleyverse/jaxley/pull/780}{PR}} (\cref{sec:method:adex_impl,sec:results:verification}).
+More substantively, were the first to try a surrogate-gradient mechanism for any of its simplified models for parameter fitting.
+The \texttt{custom\_vjp} construction generalises beyond \gls{AdEx}: the same pattern --- voltage integration inside \texttt{update\_states}, surrogate \gls{VJP} on the spike indicator --- applies verbatim to the pre-existing \gls{LIF} and Izhikevich channels.
+There is still lots of movement and structural changes to be expected within the framework.
+The development team plans to publish a different surrogate gradient implementation with the \texttt{Jaxley} v1.0.0 release.
+
+The practical leverage of this is broader than the gradient-fitting story \texttt{Jaxley} was originally built for.
+Differentiability of biophysical models is one of its headline features, but the same simulator --- \gls{JIT}-compiled, \texttt{vmap}-batched, GPU-capable --- is equally useful for derivative-free pipelines that consume many cheap forward passes: evolutionary algorithms, parameter-space exploration as in Guarino et al.~\cite{Guarino2025}, and simulation-based inference~\cite{Goncalves2020}.
+The infrastructure is therefore valuable independently of whether the gradient consumer ultimately delivers on the recovery problem --- an observation that becomes material in \cref{sec:discussion:diffadex}, where a derivative-free baseline running on this same simulator outperforms the gradient methods it was originally built to support.
+
+\section{Differentiable AdEx for parameter optimisation doesn't work}\label{sec:discussion:diffadex}
 
 The recovery-radius benchmark of \cref{sec:results:baseline} produces an unambiguous, and uncomfortable, picture.
-The three gradient-based configurations cluster within a narrow band of $P(\Gamma>0.5)$ that overlaps the no-optimisation floor on every scenario; only \texttt{grad\_vanrossum} on \texttt{adaptation} achieves a recovery radius strictly larger than the floor ($\delta_{50}=0.05$ vs.\ floor $\delta_{50}=0.02$).
-\texttt{grad\_mse} sits at or below the floor everywhere.
-\texttt{nm\_guarino}, by contrast, has a recovery radius two to four grid tiers wider than any gradient method on every scenario ($\delta_{50}\in\{0.2, 0.2, 0.4\}$).
-The plain reading of these numbers is that, with the loss functions, surrogate, and stabilisation techniques studied here, the gradient signal does not enlarge the basin of attraction relative to a derivative-free simplex on the same objective.
-The rest of this chapter discusses why.
+Across all three scenarios and over the full range of perturbation scales, no gradient method matched the success rate of the Nelder--Mead simplex on the same objective; in most cells the gradient method scored at or below the no-optimisation initialisation floor.
+\gls{MSE} was actively harmful (every run finished at or below the floor); Guarino tied the floor's recovery radius without exceeding it on any scenario; Van Rossum, the most promising of the three, enlarged the basin only on \texttt{adaptation}.
+The implication for the thesis question is direct: gradient-based parameter optimisation produces useful parameter updates for the \gls{AdEx} model only inside basins of attraction that are already small enough for derivative-free search to cover.
+The argument that initially motivated this line of work --- that the order-of-magnitude speedups Deistler et al.~\cite{Deistler2025} report for \gls{HH}-type fitting should transfer to simplified models once surrogate gradients are added --- does not survive contact with the benchmark.
+Gradient fitting works for \gls{HH}-type models not because the optimisation problem is structurally similar to \gls{AdEx} with a softening patch applied at one node, but because \gls{HH} dynamics are smooth from end to end and \gls{AdEx} dynamics are not.
 
-\section{Surrogate gradients as biased estimators}\label{sec:discussion:bias}
+The natural objection --- that the gradient methods lose because the soft Guarino features distort the objective in a way the simplex does not see --- is ruled out empirically.
+The two Nelder--Mead variants, \texttt{nm\_guarino} (soft features, identical loss surface to \texttt{grad\_guarino}) and \texttt{nm\_guarino\_hard} (exact threshold-crossing features), report identical recovery radii on every scenario, with per-direction outcomes differing by at most one direction in thirty.
+What separates the two families of methods is therefore not the objective but the gradient consumer.
+The simplex treats the loss surface as a black box: it estimates local slope by polling the corners of its simplex rather than from an analytic derivative, so on a piecewise-constant landscape with narrow informative valleys it can step over the plateaus that defeat surrogate-mediated descent, and it never encounters the gradient-magnitude pathologies that motivated our stabilisation toolbox (\cref{sec:method:opt:stabilization}) in the first place.
+Gradient descent does encounter all of them.
+The stabilisation toolbox addresses gradient \emph{magnitude} pathologies; the dominant pathologies on the gradient side are about direction and existence, which magnitude fixes cannot reach.
+We identify three candidate failure modes, each of which would individually be sufficient to produce the benchmark gap.
 
-A surrogate gradient is not an approximation of the true gradient: the true gradient of a loss involving a Heaviside spike indicator is zero almost everywhere, so there is nothing to approximate.
-What the optimiser actually descends on is the exact gradient of a \emph{smoothed} model, in which the threshold step is replaced by a sigmoid of width $\sim 1/\beta$~\cite{Neftci2019}.
-This smoothed loss $\widetilde{\mathcal{L}}(\theta)$ and the true loss $\mathcal{L}(\theta)$ agree in the limit $\beta\to\infty$, so their minima coincide \emph{asymptotically};
-at any finite $\beta$, however, the surrogate gradient is a biased estimator of the true minimum.
-It points toward minima of $\widetilde{\mathcal{L}}$, not $\mathcal{L}$, and there is no guarantee that the two sets are close at the precision required to fit individual spike times.
+\subsection{Failure mode 1: Surrogate gradients as biased estimators}\label{sec:discussion:bias}
 
-This produces the well-known dead-neuron trade-off characterised by Gygax \& Zenke~\cite{Gygax2025}.
-A sharp surrogate ($\beta\gtrsim 25$) makes $\widetilde{\mathcal{L}}$ a tight envelope of $\mathcal{L}$, but the active window of the gradient shrinks to the order of $1/\beta$ in voltage units --- on the AdEx voltage range a $\sim$0.4\,mV window, consistent with the surrogate kernels of \cref{fig:surr_grads} and the gradient-magnitude spread reported in \cref{tab:surrogate-gradient}.
-A broad surrogate ($\beta\sim 5$, the setting we use throughout) restores informative gradients but the minima of $\widetilde{\mathcal{L}}$ are displaced from those of $\mathcal{L}$ by a quantity that the optimiser cannot resolve.
-The benchmark numbers in \cref{sec:results:baseline} suggest that this displacement is large relative to the basin of attraction we would need to claim reliable parameter recovery: gradient methods succeed only where the perturbed initial point is already close enough to the true optimum that the bias does not move the recovered $\hat\theta$ outside the $\Gamma>0.5$ region.
+The ``approximate gradient'' framing of surrogate gradients is misleading.
+$\partial \mathcal{L}/\partial \theta$ involves the Heaviside derivative and is zero almost everywhere, so there is no true gradient to approximate.
+What the optimiser descends on is the exact gradient of a different objective --- a smoothed loss $\widetilde{\mathcal{L}}_\beta(\theta)$ obtained by integrating the surrogate kernel back through the threshold step, so the hard threshold is effectively replaced by a smooth step of width $\sim 1/\beta$~\cite{Gygax2025}.
+The minima of $\widetilde{\mathcal{L}}_\beta$ and $\mathcal{L}$ coincide only as $\beta\to\infty$;
+at any finite $\beta$ they are separated by a displacement that scales with $1/\beta$.
+This displacement is the bias: gradient descent converges cleanly to minima of $\widetilde{\mathcal{L}}_\beta$, which need not align with those of $\mathcal{L}$ at the precision required to fit individual spike times.
 
-Two additional structural problems compound the bias.
-First, even when the per-step surrogate is well calibrated, $\sim$5000 timesteps of leak dynamics multiply many small backward terms; the resulting gradient at the parameters is dominated by numerical noise.
-Second, most published evidence for surrogate gradients comes from population-level \gls{SNN} classification tasks, where the bias is averaged over many neurons and across loss invariances induced by the readout layer~\cite{Neftci2019, Zenke2018, Perez-Nieves2021}.
-In single-neuron \gls{AdEx} parameter fitting against an exact trace neither averaging mechanism is available, so the bias propagates directly into $\hat\theta$.
-This framing is consistent with what the benchmark shows: the optimiser is genuinely converging --- the loss does decrease, gradients are non-zero --- but it is converging on a slightly wrong objective, and the displacement between the surrogate's optimum and the true optimum is roughly the size of the gradient-method recovery radius.
+The bias is invisible in the setting where surrogate gradients were originally validated.
+\gls{SNN} classification averages it across many neurons and across the symmetries of a readout layer~\cite{Neftci2019,Zenke2018,Perez-Nieves2021}: the recovered weight set is itself underdetermined, so a small displacement in any one $\hat w_i$ does not change the task loss.
+In single-neuron \gls{AdEx} fitting against an exact target trace neither averaging mechanism is available, so the displacement lands directly on $\hat\theta$ and surfaces as a finite recovery radius even though the gradient is non-zero and the loss decreases.
 
-This bias view also predicts why \texttt{grad\_vanrossum} performs best of the three gradient losses on \texttt{adaptation}.
-Van Rossum convolves a binary spike train with a smooth exponential kernel before computing $L^{2}$ distance;
-the convolution makes the loss surface itself smooth in $s(t)$, so the only source of surrogate bias is the path from $\theta$ to $s(t)$, not the path from $s(t)$ to $\mathcal{L}$.
-Feature-based losses with sigmoid-gated validity flags compound a second softening layer on top of the surrogate, which can plausibly add to the displacement.
-We cannot quantify either contribution directly from this benchmark, but the empirical ordering --- Van Rossum $\geq$ Guarino $\geq$ MSE under gradient descent, with all three behind Nelder--Mead --- is consistent with the bias hypothesis.
+The Van Rossum $\geq$ Guarino ranking in \cref{tab:results-summary} is consistent with this view, in that it orders the losses by how many softening layers stack on top of the surrogate.
+Van Rossum sees the surrogate as its only source of bias --- the kernel convolution and the $L^2$ norm are analytically differentiable --- whereas Guarino additionally routes through soft validity gates whose sharpness $\beta_v$ adds a second softening layer with its own calibration knob.
+\gls{MSE}'s position at the bottom of the same table is not explained by this view; it is taken up in \cref{sec:discussion:landscape-fm}.
 
-\section{Why Nelder--Mead pulls ahead}\label{sec:discussion:nm}
+\subsection{Failure mode 2: Loss-landscape pathologies differ per loss}\label{sec:discussion:landscape-fm}
 
-The recovery-radius benchmark introduces two Nelder--Mead variants on purpose: \texttt{nm\_guarino}, which evaluates the same soft-feature loss that \texttt{grad\_guarino} sees, and \texttt{nm\_guarino\_hard}, which evaluates the exact-feature Guarino loss that derivative-free pipelines (including Guarino et al.~\cite{Guarino2025}) normally use.
-Comparing both to the gradient methods isolates two effects that the soft-only \texttt{nm\_guarino} alone confounds: the change of optimiser (gradient $\to$ simplex) and the change of objective (soft $\to$ hard features).
+The per-loss artifacts catalogued in \cref{sec:results:landscape} have a unifying property: they are properties of the loss formulation, not of the surrogate.
+None of them would be repaired by replacing the surrogate with an exact spike-time gradient.
 
-Two consequences follow from replacing gradient descent with the simplex while holding the objective fixed.
-First, Nelder--Mead does not see the surrogate-induced smoothed loss in the same way: it interacts with $\widetilde{\mathcal{L}}$ (because that is what is evaluated under the surrogate-enabled forward pass), but it does so as a black-box optimiser, with no claim that the local slope it estimates from polled corners of its simplex matches an analytic derivative.
-On a piecewise constant landscape with narrow informative valleys, this is an advantage: the simplex can step over plateaus that gradient descent gets stuck on (\cref{sec:results:landscape}).
-Second, derivative-free methods are insensitive to the gradient-magnitude pathologies that motivated our stabilisation toolbox in the first place (\cref{sec:training-stabilization}).
-Polyak normalisation, sigmoid reparameterisation, and surrogate calibration are responses to vanishing/exploding gradients, exploding parameter scales, and the dead-neuron problem;
-Nelder--Mead simply does not encounter them.
+For \gls{MSE}, eliminating a misaligned spike reduces pointwise voltage error more than aligning it, so the non-spiking trace is a genuine minimum of the loss itself (\cref{sec:results:landscape:mse}); an exact gradient would point in the same wrong direction.
+For Guarino, the missing-feature penalty introduces a step in the \emph{forward} loss at the boundary between the no-spike and few-spikes regimes, which the validity gates smooth only locally; the ridge that defeats descent in \cref{sec:results:landscape:guarino} is in the loss surface, not in its gradient computation.
+For Van Rossum, spike-count changes are properties of $s(t)$ that the kernel convolution operates downstream of, so they remain a source of discrete jumps in $K\ast s$ regardless of how the gradient through $s(t)$ is computed (\cref{sec:results:landscape:vanrossum}).
 
-The change of objective sharpens the diagnosis.
-The hard-feature variant \texttt{nm\_guarino\_hard} matches the soft variant cell-for-cell on every scenario in the recovery-radius table (\cref{sec:results:nm-soft-vs-hard}):
-identical $\delta_{50}\in\{0.2,0.2,0.4\}$, identical median $\Gamma_{0.05}=+1.00$, and per-direction outcomes that differ in at most one of thirty directions per cell.
-Empirically the soft features are a faithful surrogate for the exact Guarino objective at the precision the benchmark probes.
-This is the directly informative finding for the comparison against the gradient methods, because it rules out the natural objection that \texttt{nm\_guarino} is competing on a different (smoothed) objective.
-The objective is effectively the same;
-the difference is the gradient consumer.
+Guarino additionally carries a calibration cost the others do not.
+Four softness hyperparameters --- feature weights, missing-feature penalty magnitudes, validity-gate sharpness $\beta_v$, and surrogate $\beta$ --- jointly determine the loss landscape and the gradient direction, and they have to be set per cell.
+A derivative-free pipeline pays none of this cost, because exact thresholds and integer spike counts are valid feature definitions when no gradient is required.
 
-The implication for the thesis question --- \emph{can gradient-based parameter optimisation produce useful parameter updates for the \gls{AdEx} model?} --- is that the surrogate gradient, not the soft features, is what separates the gradient methods from the simplex.
-Soft features were introduced to make the loss differentiable, and they do that without distorting the objective in a way the simplex can detect at this budget;
-what fails is the descent that the surrogate gradient supplies on top of that objective.
-The bias argument of \cref{sec:discussion:bias} is therefore not just one possible explanation among several --- it is the one explanation remaining once the soft-feature confound is removed by the hard-feature control.
-Per-parameter recovery (\cref{fig:recovery-per-param}) confirms the same conclusion from a different angle: when either NM variant succeeds, it succeeds on the same parameters that the gradient methods get right at small $\delta$.
-The two families of methods do not have qualitatively different parameter-recovery profiles, only quantitatively different recovery radii.
-This is what we would expect if both families are limited by the loss landscape and only differ in how robustly they navigate it.
+The implication for the chapter is symmetrical to FM1's.
+Where FM1 said the consumer is biased toward minima of the wrong objective, FM2 says the objective itself is hostile to gradient descent in ways no surrogate change can fix.
+
+\subsection{Failure mode 3: Vanishing gradients through long unrolled simulation}\label{sec:discussion:decay}
+
+Even with a clean per-step surrogate (FM1 removed) and a friendly loss surface (FM2 removed), the parameter gradient still has to survive $\sim 5000$ multiplicative leak-Jacobian terms, which \cref{sec:bg:sg:vanishing-gradients} establishes as a severe vanishing regime for the \gls{AdEx} parameters that affect subthreshold dynamics.
+
+The standard mitigations from the \gls{SNN} literature presume something the present setting does not have.
+Truncated \gls{BPTT} trades signal length for an additional approximation bias on top of the FM1 bias the chapter is already trying to argue against.
+Eligibility-trace methods~\cite{Bellec2020} avoid backward-in-time propagation but are formulated for recurrent networks with a per-step error signal, which single-trace voltage-recording fitting does not provide.
+Increasing the integration step $\Delta t$ shrinks the unroll depth at the cost of accuracy on the exponential spike-initiation term --- the regime in which the surrogate kernel does most of its work --- so the trade is not benign.
+
+This failure mode is the most speculative of the three.
+Its effect is confounded with FM1 and FM2 at every gradient step, so the benchmark cannot isolate it; the theoretical case is strong but the empirical signature --- a residual radius gap that persists after FM1 and FM2 are removed --- is outside the scope of this thesis to test.
+
+The three failure modes interact at every gradient step: the surrogate bias creates the displacement, the landscape pathologies determine whether the (biased) minimum can be navigated to, and the gradient decay determines whether the signal survives the trip backward.
+The present data cannot apportion their relative weight, but the negative conclusion is robust to whichever turns out to dominate.
+The cleanest forward direction this leaves is not a better surrogate or a better loss but a different neuron model --- one that avoids the bias by construction rather than trying to calibrate around it.
+We return to that argument in \cref{sec:discussion:klos} with the Klos \& Memmesheimer~\cite{Klos2025} construction.
 
 \section{Klos \& Memmesheimer's exact spike-time gradients}\label{sec:discussion:klos}
+\itodo{section needs rewriting}
+The cleanest alternative to the surrogate-bias problem above is to avoid the bias rather than calibrate around it: change the neuron model so the bias does not exist.
+The Klos--Memmesheimer construction~\cite{Klos2025} introduced in \cref{sec:rw:sg-snn} does exactly this, with closed-form between-spike solutions for the \gls{QIF}-family and a pseudospike mechanism that keeps silent neurons addressable.
+Where our gradient methods descend on a smoothed loss $\widetilde{\mathcal{L}}$ and hope it tracks $\mathcal{L}$ closely enough, theirs descend on $\mathcal{L}$ itself.
 
-A complementary line of work~\cite{Klos2025} sidesteps the surrogate-gradient bias entirely by changing the neuron model.
-Their construction switches from \gls{LIF} to a \gls{QIF}-family model in which $\dot V$ becomes infinite at threshold, making spike times continuously differentiable functions of the parameters with closed-form between-spike solutions.
-A separate \emph{pseudospike} mechanism extends the dynamics past trial end so that silent neurons still have an addressable (pseudo)spike time, removing the dead-neuron problem by construction rather than by surrogate calibration.
+\gls{AdEx} sits awkwardly between the two regimes.
+The exponential term (clamped at $\exp(10)$ in our implementation, \cref{sec:method:adex_impl}) makes the slope at threshold steep but finite, and the coupling to the adaptation current $w$ rules out the closed-form between-spike solutions the Klos--Memmesheimer construction requires.
+The intermediate slope may also explain why our gradient methods remain at least partially functional at small $\delta$ in \cref{sec:results:baseline}: surrogate bias scales with how sharply the forward pass departs from the smoothed model, and \gls{AdEx} is much closer to \gls{QIF} than to \gls{LIF} on that axis.
+A direct diagnostic --- rerunning the benchmark with a \gls{LIF} channel substituted for \gls{AdEx}, where the slope is genuinely zero and the bias should dominate --- is outside the scope of this thesis but is the experiment that would confirm or falsify the bias view most cleanly.
 
-This approach is not directly transferable to the \gls{AdEx} setting we study.
-\gls{AdEx} has a steep but \emph{finite} slope at threshold (the exponential term clamped at $\exp(10)$ in our implementation, \cref{sec:method:adex_impl}), so its spike-time-as-function-of-parameters relation is differentiable in a measure-zero sense only;
-implementing the Klos--Memmesheimer construction would require closed-form solutions of the \gls{AdEx} dynamics between spikes, which do not exist due to the coupling to the adaptation current $w$.
-\gls{AdEx} therefore occupies an intermediate position --- between the \gls{LIF} regime, where surrogate gradients are essential, and the \gls{QIF} regime, where they are unnecessary --- and the relatively benign behaviour we observe at small $\delta$ for gradient methods may reflect this intermediate slope rather than any property of the surrogate.
-We note this as a hypothesis: the benchmark of \cref{sec:results:baseline} would gain quantitative meaning if it were rerun with a \gls{LIF} channel substituted for \gls{AdEx}, but that comparison is outside the scope of this thesis.
+The choice this leaves for downstream work depends on what the simplified-neuron pipeline is for.
+If exact recovery of spike times matters more than fidelity to a specific biophysical model, the \gls{QIF}-family with the Klos--Memmesheimer construction is a strictly better starting point than refining surrogates on \gls{AdEx}.
+If the biophysical specifics of \gls{AdEx} are required, the bottleneck is the loss landscape, not the optimiser:
+multi-trace constraints (\cref{sec:method:opt:stabilization:multi-trace}), curriculum schedules, hybrid objectives that combine Van Rossum's kernel smoothness with feature-based temporal credit assignment, and signal-processing-derived spike-train distances we have not explored are all more productive avenues than further work on the gradient-consumer side.
+\Cref{ch:conclusionsAndFutureWork} returns to these directions as concrete recommendations.
 
-The implication for future work is the cleanest takeaway from this chapter.
-If exact recovery of spike times matters more than fidelity to a specific biophysical model, switching to a \gls{QIF}-family neuron with the Klos--Memmesheimer construction is a strictly better starting point than refining surrogates on \gls{AdEx}.
-If the converse is true and the biophysical specifics of \gls{AdEx} are required, the present results suggest that loss-landscape design --- multi-trace constraints, curriculum schedules, hybrid losses that combine the smoothness of Van Rossum with the temporal credit assignment of feature-based approaches --- is a more productive direction than further work on the optimiser side.
+\section{Limitations}\label{sec:discussion:limitations}
+The negative result above are the results of a benchmark whose scope is deliberately narrow.
+Five constraints in particular bound the conclusion's magnitude.
+
+\textbf{Single model.}
+The recovery-radius benchmark is on \gls{AdEx} only.
+The bias argument of \cref{sec:discussion:bias} predicts that gradient methods should fare worse on \gls{LIF} (slope zero at threshold, surrogate bias maximal) and somewhere between \gls{AdEx} and \gls{QIF} on Izhikevich; neither prediction is tested.
+Substituting \texttt{FireSurrogate} (or an Izhikevich equivalent) into the benchmark pipeline is a drop-in change and is the cleanest way to falsify the surrogate-bias view.
+
+\textbf{Single stimulus protocol.}
+All scenarios use $100$\,ms step currents.
+Time-varying or ramped inputs might exercise gradient pathways through $\tau_w$ that step currents cannot, and the multi-trace setup of \cref{sec:method:opt:stabilization:multi-trace} is implemented but not used in the headline benchmark.
+A multi-trace replication of the recovery-radius experiment is the natural extension and would speak directly to the adaptation-parameter identifiability question deferred in \cref{sec:method:opt:recovery-benchmark:scope}.
+However, parameter recovery on a single trace for small perturbations will be almost certainly a necessary precondition for any successful multi-trace optimisations.
+
+\textbf{Fixed hyperparameters per method.}
+Each method runs with one configuration across all scenarios and perturbations.
+No per-cell tuning, no architecture search.
+Guarino's hyperparameter brittleness (\cref{sec:discussion:landscape-fm}) is itself evidence that an \gls{HP}-search budget could shift the gradient-method radii up;
+we have not quantified by how much, and this is the most likely angle from which a follow-up could partially overturn the result.
+However, if scenario specific hyperparameter tuning is needed, to successfully run this method, one could directly sample over the initial parameter space using the same computational resources.
+
+\textbf{Failure modes as candidates, not isolated causes.}
+The three failure modes are entangled at every gradient step.
+Isolating FM1 cleanly requires the LIF substitution above;
+isolating FM3 requires sweeping simulation length while holding FM1 and FM2 fixed;
+isolating FM2 requires an exact-gradient method on \gls{AdEx}, which is the construction that does not exist for this model family.
+The chapter's negative conclusion is robust to whichever component dominates, but the diagnosis itself is not substantiated by isolation experiments.
+
+\textbf{Synthetic targets.}
+The benchmark uses model-generated data, so it measures the optimisation problem in isolation rather than the model--data mismatch one would face on real recordings.
+The recovery radii reported are upper bounds on what the same setup would achieve experimentally.
+Since no perfect recovery can be expected when fitting to real neurons, a (further) drastic drop in fit-ability can be expected.

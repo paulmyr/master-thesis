@@ -622,8 +622,8 @@
       \strng{authornamehash}{1a4faf92ede1113bc7038ba373ef1639}
       \strng{authorfullhash}{0ed622ee427c61464ab8aa346570a06d}
       \strng{authorfullhashraw}{0ed622ee427c61464ab8aa346570a06d}
-      \field{sortinit}{1}
-      \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
+      \field{sortinit}{2}
+      \field{sortinithash}{8b555b3791beccb63322c22f3320aa9a}
       \field{labelnamesource}{author}
       \field{labeltitlesource}{title}
       \field{eprintclass}{cs}
@@ -895,8 +895,8 @@
       \strng{authornamehash}{bfaede4269847562cfd8c95eb182853c}
       \strng{authorfullhash}{a3225f62c86134808f8f28ad467d9da3}
       \strng{authorfullhashraw}{a3225f62c86134808f8f28ad467d9da3}
-      \field{sortinit}{2}
-      \field{sortinithash}{8b555b3791beccb63322c22f3320aa9a}
+      \field{sortinit}{3}
+      \field{sortinithash}{ad6fe7482ffbd7b9f99c9e8b5dccd3d7}
       \field{labelnamesource}{author}
       \field{labeltitlesource}{title}
       \field{journaltitle}{eLife}
@@ -1191,6 +1191,70 @@
       \field{year}{2024}
       \verb{doi}
       \verb 10.5281/ZENODO.14222078
+      \endverb
+    \endentry
+    \entry{Polyak1964}{article}{}{}
+      \name{author}{1}{}{%
+        {{hash=86e8da8c20afcbab24c7fbcca00e3f0e}{%
+           family={Polyak},
+           familyi={P\bibinitperiod},
+           given={B.T.},
+           giveni={B\bibinitperiod}}}%
+      }
+      \list{publisher}{1}{%
+        {Elsevier B.V}%
+      }
+      \strng{namehash}{86e8da8c20afcbab24c7fbcca00e3f0e}
+      \strng{fullhash}{86e8da8c20afcbab24c7fbcca00e3f0e}
+      \strng{fullhashraw}{86e8da8c20afcbab24c7fbcca00e3f0e}
+      \strng{bibnamehash}{86e8da8c20afcbab24c7fbcca00e3f0e}
+      \strng{authorbibnamehash}{86e8da8c20afcbab24c7fbcca00e3f0e}
+      \strng{authornamehash}{86e8da8c20afcbab24c7fbcca00e3f0e}
+      \strng{authorfullhash}{86e8da8c20afcbab24c7fbcca00e3f0e}
+      \strng{authorfullhashraw}{86e8da8c20afcbab24c7fbcca00e3f0e}
+      \field{sortinit}{6}
+      \field{sortinithash}{b33bc299efb3c36abec520a4c896a66d}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{U.S.S.R. computational mathematics and mathematical physics}
+      \field{number}{5}
+      \field{title}{Some Methods of Speeding up the Convergence of Iteration Methods}
+      \field{volume}{4}
+      \field{year}{1964}
+    \endentry
+    \entry{Johansson2020}{article}{}{}
+      \name{author}{2}{}{%
+        {{hash=e4c1dee92de28510fc55c78028ae2729}{%
+           family={Johansson},
+           familyi={J\bibinitperiod},
+           given={Yvonne},
+           giveni={Y\bibinitperiod}}}%
+        {{hash=f721283704eb5e737c8e043b79a5c894}{%
+           family={Silberberg},
+           familyi={S\bibinitperiod},
+           given={Gilad},
+           giveni={G\bibinitperiod}}}%
+      }
+      \strng{namehash}{fb81984d39db8185d7cc2aee38cd926a}
+      \strng{fullhash}{fb81984d39db8185d7cc2aee38cd926a}
+      \strng{fullhashraw}{fb81984d39db8185d7cc2aee38cd926a}
+      \strng{bibnamehash}{fb81984d39db8185d7cc2aee38cd926a}
+      \strng{authorbibnamehash}{fb81984d39db8185d7cc2aee38cd926a}
+      \strng{authornamehash}{fb81984d39db8185d7cc2aee38cd926a}
+      \strng{authorfullhash}{fb81984d39db8185d7cc2aee38cd926a}
+      \strng{authorfullhashraw}{fb81984d39db8185d7cc2aee38cd926a}
+      \field{sortinit}{7}
+      \field{sortinithash}{108d0be1b1bee9773a1173443802c0a3}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Cell Reports}
+      \field{month}{1}
+      \field{number}{4}
+      \field{title}{The {{Functional Organization}} of {{Cortical}} and {{Thalamic Inputs}} onto {{Five Types}} of {{Striatal Neurons Is Determined}} by {{Source}} and {{Target Cell Identities}}}
+      \field{volume}{30}
+      \field{year}{2020}
+      \verb{doi}
+      \verb 10.1016/j.celrep.2019.12.095
       \endverb
     \endentry
   \enddatalist

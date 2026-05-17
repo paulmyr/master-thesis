@@ -1,88 +1,30 @@
 \chapter{Conclusions and Future work}\label{ch:conclusionsAndFutureWork}\deadline{May 31st}
 
+% Conclusions your conclusions. A few short sentences.
+
 \section{Conclusions}
 \label{sec:conclusions}
+\itodo{write conclusion}
 
-This thesis set out to answer whether gradient-based parameter optimisation can produce useful parameter updates for the \gls{AdEx} neuron model.
-We implemented an \gls{AdEx} channel in \texttt{Jaxley} with surrogate gradients (\cref{sec:method:adex_impl,sec:method:surrogate-gradients}), validated it against Brian2 to sub-millisecond agreement (\cref{sec:results:verification}), compared three differentiable losses (\gls{MSE}, the feature-based loss of Guarino et al., and the Van Rossum distance) under a common Polyak optimiser with sigmoid parameter reparameterisation, and benchmarked the resulting setup against two Nelder--Mead baselines --- one on the soft Guarino objective shared with the gradient methods, one on the exact (hard-feature) Guarino objective used by derivative-free pipelines elsewhere in the literature --- via a paired recovery-radius protocol (\cref{sec:method:recovery-benchmark}).
-
-The answer the data supports is more restrictive than the question hopes for.
-Across 2700 paired runs over three firing regimes, gradient-based methods recover \gls{AdEx} membrane parameters reliably ($P(\Gamma>0.5)\geq 0.5$) only for perturbations $\delta\leq 0.02$--$0.05$ of the parameter range, which is the same regime in which the perturbed initial point is already informative without any optimisation at all.
-\texttt{grad\_mse} sits at or below the no-optimisation floor on every scenario, confirming the theoretical prediction that pointwise voltage losses are ill-suited to spiking data.
-\texttt{grad\_guarino} and \texttt{grad\_vanrossum} improve on \gls{MSE} but match the no-optimisation floor on two of three scenarios; only \texttt{grad\_vanrossum} on \texttt{adaptation} achieves a recovery radius (one tier of $\delta$) wider than the floor.
-By contrast, Nelder--Mead on the same \emph{soft} Guarino objective recovers reliably up to $\delta\in\{0.2,0.2,0.4\}$ across the three regimes --- two to four grid tiers wider than any gradient method.
-Adaptation parameters $(a, b, \tau_w)$ are out of scope for this benchmark by construction (\cref{sec:method:recovery-benchmark}); their unidentifiability from a single trace, anticipated in \cref{sec:training-stabilization}, is a separate finding rather than a benchmark failure.
-
-Replacing the soft features with the exact (hard-feature) Guarino objective --- the configuration Guarino et al.~\cite{Guarino2025} themselves use with evolutionary search --- leaves Nelder--Mead's recovery radius unchanged on every scenario (\cref{sec:results:nm-soft-vs-hard}).
-The soft features are therefore not biasing the comparison in NM's favour;
-they are a faithful surrogate for the true objective at the precision the benchmark probes, and the gap to the gradient methods is on the surrogate gradient itself, not on the loss surface that gradient is computed against.
-
-We therefore conclude that, with the loss functions and stabilisation toolbox studied here, gradient-based optimisation of the \gls{AdEx} model does \emph{not} provide useful parameter updates beyond what a derivative-free baseline produces on the same objective.
-The limitation is structural, not algorithmic.
-The loss landscape contains large non-spiking plateaus (\cref{sec:results:landscape}) on which the surrogate gradient supplies a direction that is biased relative to the true (piecewise constant) loss (\cref{sec:discussion:bias});
-stabilisation techniques --- Polyak normalisation, sigmoid reparameterisation, surrogate calibration --- reduce gradient-magnitude pathologies but do not move the optimum of the smoothed loss back onto the optimum of the true loss, and consequently do not enlarge the basin of attraction (\cref{sec:discussion:nm}).
-The open research problem is loss/landscape design, not optimiser tuning.
-
-\section{Limitations}
-\label{sec:limitations}
-
-Three limitations bound the generality of these conclusions.
-
-\textbf{Synthetic targets.}
-The recovery-radius benchmark generates target traces with the same Jaxley \gls{AdEx} implementation used for training.
-It therefore measures the optimisation problem in isolation, with no model--data mismatch.
-The radii reported in \cref{tab:results-summary} are upper bounds on what the same setup would achieve against real recordings, where additional sources of variance (cell-to-cell heterogeneity, recording noise, model misspecification) would tighten the basin of attraction further.
-We do not test on experimental traces in this thesis; the data and pipeline are in place (\cref{sec:results:training}'s outlook), but conclusions about gradient-based fitting on experimental data require their own benchmark and are deferred.
-
-\textbf{Single trace, single step current.}
-Every benchmark run uses a single 100\,ms step-current trace.
-This is the configuration in which the adaptation parameters $(a, b, \tau_w)$ are most weakly identifiable and is consequently the configuration in which any method should be expected to struggle on those parameters specifically.
-The multi-trace extension described in \cref{sec:training-stabilization} addresses this and is reported as a separate, single-scenario ablation in \cref{sec:results:training};
-folding it into the recovery-radius benchmark proper would conflate the basin-of-attraction comparison with the additional information supplied by multiple protocols and was deliberately avoided.
-
-\textbf{Fixed hyperparameters.}
-The configurations in \cref{tab:training-params} are the single-stage settings validated in the per-loss training notebooks of \cref{sec:results:training};
-no per-scenario or per-$\delta$ hyperparameter tuning is applied during the benchmark.
-The radii reported here therefore characterise the methods as one would actually deploy them --- a single configuration robust across firing regimes --- rather than their best possible behaviour under unconstrained tuning.
-A method-specific HP sweep would shift the recovery curves upward by an unknown amount;
-the relative ordering between methods is unlikely to flip, because the gap between \texttt{nm\_guarino} and the gradient cluster spans multiple tiers of $\delta$, but the absolute radii should be read with this caveat.
-
-\section{Future work}
-\label{sec:futureWork}
-
-The discussion (\cref{ch:discussion}) identifies two directions that follow directly from the empirical findings.
-
-\textbf{Exact spike-time gradients via \gls{QIF}-family models.}
-Klos \& Memmesheimer's pseudospike construction~\cite{Klos2025} achieves non-surrogate spike-time gradients by switching to a \gls{QIF} neuron where $\dot V$ is infinite at threshold and between-spike dynamics have closed-form solutions.
-Whether the small-$\delta$ behaviour we observe for surrogate-based \gls{AdEx} fitting reflects the relatively benign slope of the \gls{AdEx} exponential nonlinearity (intermediate between \gls{LIF} and \gls{QIF}) is the cleanest empirical hypothesis to test next:
-rerunning the recovery-radius benchmark with a \gls{LIF} channel and with a \gls{QIF}-pseudospike channel against the same paired perturbations would let one quantify how much of the basin-of-attraction shortfall is due to the surrogate per se and how much is due to the loss landscape.
-
-\textbf{Loss-landscape design for surrogate-compatible models.}
-Within the \gls{AdEx} setting, the discussion of \cref{sec:discussion:bias} suggests that loss functions with fewer softness layers between $\theta$ and the loss value (Van Rossum being the cleanest example) are less affected by surrogate bias.
-A natural extension is hybrid objectives that combine Van Rossum's smoothness with feature-based temporal credit assignment, multi-trace constraints that pin down adaptation parameters, and curriculum schedules that start with coarse spike-count features and add timing terms only after the gradient has carried the optimiser onto the spiking branch.
-Each of these is a loss-design intervention, not an optimiser intervention, and the benchmark protocol of \cref{sec:method:recovery-benchmark} provides a ready-made instrument for evaluating them.
-
-\textbf{Experimental traces.}
-The synthetic-target restriction in the present benchmark is methodologically deliberate, but the question of whether gradient-based fitting works on real recordings remains open.
-A natural follow-up is to run the same protocol on the IDthresh recordings (\cref{sec:method:adex_impl}'s data sources) with $\theta^{*}$ replaced by the best Nelder--Mead fit on each cell;
-this measures whether the gradient methods can refine a derivative-free fit, which is the workflow they would plausibly be deployed in.
+\section{Future Work}
+\label{sec:future-work}
+\itodo{write future work}
 
 \section{Reflections}
 \label{sec:reflections}
-
-The most economically and socially relevant aspect of this work is the negative result itself.
-\gls{HPC}-scale gradient-based parameter fitting of biophysical neuron models, as exemplified by \texttt{Jaxley}~\cite{Deistler2025}, is an attractive proposition precisely because GPU acceleration and automatic differentiation promise orders-of-magnitude speedups over derivative-free methods on Hodgkin--Huxley-type models.
-The implicit expectation is that the same speedup transfers to simplified models via surrogate gradients.
-This thesis provides evidence that, for \gls{AdEx} at least, that transfer is not automatic:
-on the recovery task we study, a CPU Nelder--Mead simplex outperforms GPU-friendly gradient descent on a like-for-like loss, by a margin that matters.
-Researchers planning to commit compute and engineering effort to surrogate-gradient pipelines for biophysical fitting should factor this in;
-the contribution that goes furthest is not building the pipeline but characterising honestly what it does and does not deliver.
-
-On the environmental side, the practical recommendation that follows is that derivative-free baselines should be retained alongside gradient-based methods in any fitting workflow.
-A typical fitting study runs many fits to characterise hyperparameter sensitivity and cell-to-cell variation;
-if Nelder--Mead achieves comparable or better radii at a fraction of the GPU usage --- which it does in our experiments, with $\sim$5--10\,s per run on CPU --- the lower-energy method is also the better-performing one.
-This is a context-specific recommendation: nothing in this thesis argues against gradient-based fitting in general, only against deploying it in a regime where its theoretical advantages do not materialise in practice.
-
-On the ethical side, the work raises no concerns specific to its conduct.
-All data are simulated or sourced from the publicly released Johansson \& Silberberg recordings under their original ethics approval;
-no new animal experiments were performed for this thesis.
+% The most economically and socially relevant aspect of this work is the negative result itself.
+% \gls{HPC}-scale gradient-based parameter fitting of biophysical neuron models, as exemplified by \texttt{Jaxley}~\cite{Deistler2025}, is an attractive proposition precisely because GPU acceleration and automatic differentiation promise orders-of-magnitude speedups over derivative-free methods on Hodgkin--Huxley-type models.
+% The implicit expectation is that the same speedup transfers to simplified models via surrogate gradients.
+% This thesis provides evidence that, for \gls{AdEx} at least, that transfer is not automatic:
+% on the recovery task we study, a CPU Nelder--Mead simplex outperforms GPU-friendly gradient descent on a like-for-like loss, by a margin that matters.
+% Researchers planning to commit compute and engineering effort to surrogate-gradient pipelines for biophysical fitting should factor this in;
+% the contribution that goes furthest is not building the pipeline but characterising honestly what it does and does not deliver.
+%
+% On the environmental side, the practical recommendation that follows is that derivative-free baselines should be retained alongside gradient-based methods in any fitting workflow.
+% A typical fitting study runs many fits to characterise hyperparameter sensitivity and cell-to-cell variation;
+% if Nelder--Mead achieves comparable or better radii at a fraction of the GPU usage --- which it does in our experiments, with $\sim$5--10\,s per run on CPU --- the lower-energy method is also the better-performing one.
+% This is a context-specific recommendation: nothing in this thesis argues against gradient-based fitting in general, only against deploying it in a regime where its theoretical advantages do not materialise in practice.
+%
+% On the ethical side, the work raises no concerns specific to its conduct.
+% All data are simulated or sourced from the publicly released Johansson \& Silberberg recordings under their original ethics approval;
+% no new animal experiments were performed for this thesis.
