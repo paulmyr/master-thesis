@@ -1,0 +1,118 @@
+OPPOSITION REVIEW (*)
+
+!! See the instructions to the opponent at the bottom !!
+
+---------	
+
+OPPOSITION INFORMATION
+
+The author of the thesis:
+The title of the thesis:
+The name of the opponent:
+The date of the opposition:
+
+----------
+
+EVALUATION -- GUIDING QUESTIONS
+N.B. Please remember to justify your answers to the questions below, in particular providing detailed remarks (in this protocol or as comments in the thesis pdf) for potential issues that you have identified.
+
+
+I. SUMMARY
+
+Briefly summarise the work in one or two paragraphs.
+
+
+II. TITLE, INTRODUCTION, BACKGROUND
+
+Do the report title and abstract justly reflect the contents of the report? 
+
+Are the project background and underlying interest adequately described? 
+
+Is the introduction with general survey of the area clear and complete? 
+
+Is the research question/aim/purpose clear (**)?
+
+
+III. THEORY AND PREVIOUS WORK
+
+Is the theory description sufficient to understand the project and is it explicitly connected to the project (***)?
+
+Is the description of related work complete enough and synthesised to describe how the project relates to previous research?
+
+
+IV. METHOD
+
+Is the choice of method for tackling the problem justified (including discussing alternative methods)? 
+
+Are the prerequisites for applying the method considered? 
+
+Is the method adequately explained?
+
+
+V. RESULTS, DISCUSSION AND CONCLUSIONS
+
+Are the results clearly described?
+
+Is the evaluation performed to assess the results adequate to answer the research question/aim?
+
+Does the author discuss the limitations, possible future work and compare the achieved results to those of related work?
+
+Are the conclusions credible and supported by the results?
+
+
+VI. FIGURES, TABLES AND BIBLIOGRAPHY
+
+Are the Figures/Tables clear (e.g., graphical quality, units and axis labels provided, caption sufficiently informative to make the Table/Figure self-contained)?
+
+Are the Figures/Tables a valuable support to the main text (e.g., are they referenced in the text, do they provide new or more accessible information, are none superfluous)?
+
+Is no Figure/Table necessary for understanding the text missing?
+
+Is the source of information and origin of graphics in Figures clear (e.g., if it is based on an external reference) and is copyrighted or CC material handled adequately?
+
+Rate the bibliography in terms of coverage and quality of references included. 
+
+
+VII. STRENGTHS, WEAKNESSES AND STRUCTURE
+
+What are the strong aspects of the work/report?
+
+What are the weak aspects of the work/report? 
+
+Which sections of the report were difficult to understand? Why? And what could be done to improve this? 
+
+Other general comments on the report and its structure, including if there is a logical "storyline" from Introduction to Conclusions.
+ 
+
+VIII. OUTLOOK AND CONCLUDING ASSESSMENT
+
+What is your view of the news value of the work?
+
+Does the report put the project into a larger perspective, considering e.g., societal impact, (economical, ecological and/or societal) sustainability, ethics?
+
+What is your concluding assessment of this Master thesis project?
+
+
+IX. SEMINAR QUESTIONS
+
+List ca. six questions that you would like to ask the presenter at the seminar
+
+
+--------
+(*) Adapted from Kerstin Frenckner's original template. 
+
+(**) Since Master thesis projects differ, it is common, but not compulsory, to include an explicit research question. Regardless, the author should clearly state what the focus of the project is, in the form of a question, aim or purpose.
+
+(***) rather than merely being a general description of the area of research without clear links to the project
+
+---------
+
+INSTRUCTIONS TO THE OPPONENT
+
+The aim of the opposition review is two-fold: 
+As an opponent, you should demonstrate that you fulfill the learning outcome that you are able to "reflect on and critically review [...] others' scientific achievements".
+For the presenter, the feedback provided by the opponent is an opportunity firstly to improve the report further and secondly to demonstrate their ability to address constructive criticism by considering your remarks when preparing the final version of the thesis.
+This means that the opposition review should focus on both identifying strengths of the work and suggesting -- in relative detail -- improvements that you deem would make the report better (in terms of completeness, ease of understanding, readability etc).
+
+The above evaluation questions serve as a guide to your opposition review, but you are not required to follow the question-answer structure, if you prefer a different review outline. What matters is that you provide enough remarks and details in your opposition review to allow the presenter to consider your suggestions for improvement. If you prefer, details may instead be provided as comments in an annotated pdf of the report. If you do provide comments in the actual report, please briefly state in this protocol where relevant comments regarding the different questions below are provided.
+

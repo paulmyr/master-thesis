@@ -1,0 +1,185 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{parskip}
+\usepackage{amsmath}
+
+\setlist[itemize]{leftmargin=*,topsep=2pt,itemsep=1pt}
+
+\newcommand{\sect}[1]{\medskip\noindent\textbf{#1}\par}
+\newcommand{\q}[1]{``\textit{#1}''}
+\newcommand{\pg}[1]{(p.~#1)}
+
+\title{Opposition Review}
+\author{Opponent: Paul Mayer}
+\date{Seminar date: 2026-05-18}
+
+\begin{document}
+
+\maketitle
+
+\section*{Opposition Information}
+\begin{itemize}
+  \item \textbf{Author:} Rishi Vijayvargiya
+  \item \textbf{Title:} Stepwise Precision Refinement For Computing Symmetric Matrix Squares on Tensor Cores --- With Adaptive Splitting for Reduced Computation Redundancy
+  \item \textbf{Opponent:} Paul Mayer
+  \item \textbf{Date of opposition:} 2026-05-18
+\end{itemize}
+
+\section{Summary}
+
+The thesis proposes \emph{stepwise precision refinement}, an extension of the FP32$\to$FP16 precision-refinement technique of Markidis et al.~to three working precisions (FP64$\to$FP32$\to$FP16), in order to approximate the square of an FP64 symmetric matrix on NVIDIA Tensor Cores. An FP64 input element is decomposed into four FP16 components ($A_1,\ldots,A_4$); the matrix square is then computed via 10 (instead of 16) Tensor-Core matmuls by exploiting symmetry. The author additionally proposes \emph{adaptive splitting}, a runtime filter that drops $A_i$ matrices whose non-zero fraction falls below a threshold (NZT). A worst-case error bound is derived under a simplified model, and experiments on an A100 measure $t_{\text{total}}$, $e_{\max}$, $e_{\text{avg}}$ versus \texttt{cublasDgemm} for matrices $n\in[256,16384]$ and four input ranges.
+
+The main empirical finding is that using 3 FP16 matrices is a reasonable middle ground between accuracy and runtime, and that adaptive splitting effectively skips redundant computations when input magnitudes are small enough that residual matrices vanish in FP16.
+
+\section{Title, Introduction, Background, Theory and Previous Work}
+
+Title and abstract accurately describe the content.
+Both stepwise refinement and adaptive splitting contributions are mentioned correctly.
+
+The Introduction starts with an interesting, memorable hook; however, it may be slightly misleading.
+The crash portrait in the Ariane 5 anecdote \pg{1} was an overflow bug, not really something to do with lower-precision arithmetic.
+
+Chapter~2 is excessively long for a CS master's audience in my opinion.
+Some Theory is introduced but never used downstream (or maybe I missed it?), e.g., subnormal number discussion \pg{9}.
+Binary point representation is undergraduate textbook material, CUDA thread/block hierarchy, kernel launch lifecycle etc. could be condensed by roughly half.
+The related work section motivates symmetric matrix squares (physics, finance, chemistry, graph theory) very well.
+It might have been nice to use one of these applications to then validate the method, but that's a scope decision.
+Coverage of other precision refinement is thorough and seems competent.
+However, the Ozaki Scheme~II is dismissed as \q{quite intricate} \pg{25} rather than discussed substantively, which was disappointing.
+Also, empirical comparison with the Ozaki scheme is missing, despite Section~3.4 explicitly identifying it as the alternative and motivating the work as filling \q{the apparent gap in the precision refinement techniques} \pg{27}.
+The thesis only positions itself \emph{against} prior work conceptually, never numerically.
+
+Research goals are stated as four bullet points \pg{3}, but no explicit research question.
+The implicit question (\q{Can stepwise refinement to 3 precisions improve accuracy of symmetric-matrix squares acceptably vs.~FP64?}) can be inferred but is never clearly stated.
+
+A highlight to me is Section 4.5 (Theory of worst-case error bound).
+It is well-explained and validated experimentally.
+
+\section{Method}
+Justification is mostly \q{extends Markidis et al. from 2 to 3 precisions}.
+The decision to route FP64$\to$FP32$\to$FP16 (rather than directly FP64$\to$FP16 with multi-term residual) is taken as given;
+Prerequisites are stated in Section 4.5.
+E.g. he explicitly lists assumptions (no underflow/overflow, $|\delta_{16}|\le u_{16}$, etc.).
+
+The method is adequatly explained.
+Figures 4.1--4.4 make the decomposition very clear, and Eqs.~(4.5)--(4.6) walk through the symmetric-matrix shortcut explicitly.
+Implementation chapter (Ch.~5) is well-paced; CUDA listings are concrete and traceable.
+
+\section{Results, Discussion, Conclusions}
+All results are well described.
+The author walks through each metric per range systematically.
+The findings seem honest.
+He openly reports that the approach is \emph{slower} than FP64 \texttt{cublasDgemm} for small matrices \pg{74}
+
+Evaluation was done on single hardware platform.
+No portability claims were tested.
+As stated above, tests were performed on synthetic inputs only:
+uniformly distributed random symmetric matrices across four arbitrary ranges.
+None of the motivating applications (covariance matrices, density matrices, etc.) appear in evaluation.
+Only 5 runs averaged \pg{69}; no variance/CI reported in most figures.
+No comparison against Ozaki scheme implementations.
+
+Some Limitations are clearly stated
+The author honestly discusses memory consumption and coarseness of adaptive splitting.
+
+Section 8.2 maps \q{1 FP16 matrix} and \q{2 FP16 matrices} onto existing approaches
+(\q{can be thought of as the application of the existing precision refinement technique} \pg{92}), which is a clean way to compare.
+However, no comparison vs.~Ozaki, vs.~direct FP64$\to$FP16 cast, or vs.~FP32 \texttt{cublasGemmEx} was performed, which would help place the work into a broader context.
+
+\textbf{Are the concolusions credible and supported by the results?}
+Yes, the recommendation \q{3 FP16 matrices is a good middle ground} is well-supported for the ranges tested.
+Adaptive splitting is shown to help only when residuals are vanishingly small (Ranges 1--3); for Range 4 nothing is filtered (Table 7.1).
+Generalisation beyond the four tested ranges is not established, it was out of scope to begin with.
+
+\section{Figures, Tables, Bibliography}
+Some Figures are particularly good, e.g. Figures 4.1, 4.7 or 5.1 were good additions to simplify the understanding of the work.
+However, I dislike the use of figures for equations, e.g. Fig. 4.2, ..., 4.4.
+Some Figures could have been code listings (e.g. Fig. 4.5, 4.6) but this may be too nitpicky.
+Figure 2.11 contains a caption error: the caption says \q{Representing (78.5625) in FP16} but the figure actually shows (1024.5).
+
+Listing 5.7 and 5.8 captions \pg{62}: both captioned \q{Combining the Products of 3 FP16 Matrices to Form Final FP32 Result},
+but neither listing does that (copy paste error).
+I \emph{think} 5.7 is the overall algorithm, 5.8 is the FP64 reference \texttt{cublasDgemm} call. Fix that.
+
+Figures that display results are done very well.
+Axis and scales are well picked, transparent and readable.
+They strongly support the result section.
+
+I liked Table 7.5 \pg{88}: The colour-coded digit differences is a clever way to surface differences that the bar charts cannot show.
+Figures 7.5/7.6 (line + bar duplication for execution time) feels redundant --- the appendix contains essentially the same plots for Ranges 2--3, suggesting a single combined figure would have sufficed.
+
+What is missing?
+A plot of the \emph{accuracy/runtime trade-off frontier} (e.g.,~$e_{\text{avg}}$ vs.~$t_{\text{total}}$ across configurations).
+Could have made the main recommendation visually clear.
+
+All adapted figures are credited.
+
+The bibliography seems appropriate.
+Mostly academic papers, standards, and vendor documentation.
+I'm a bit unsure about excessive use of web resources (adacomputerscience.org, DigitalOcean, Modal blog, Stack Overflow)
+textbook references would be stronger... if avaiable.
+From my understanding, key papers are covered: Markidis et al.~[5], Fasi et al.~[21], Mukunoki et al.~[19], Ozaki et al.~[52,53], Higham [18].
+
+\section{Strengths, Weaknesses, Structure}
+
+\textbf{Strengths:}
+\begin{itemize}
+  \item Rigorous and reproducible (command-line args, seeds, hardware specs, software versions, ...). Everything is explicit.
+  \item Theoretical error bound is derived first and experimentally validated.
+  \item Honest reporting of negative results (overhead for small matrices, the \q{$e_{\text{avg}}$ trend when using 1 FP16 matrix} anomaly is openly investigated in Section 8.3).
+  \item Adaptive splitting is a genuinely useful and novel engineering optimisation.
+  \item Explicit acknowledgement of AI tool usage.
+\end{itemize}
+
+\textbf{Weaknesses}:
+\begin{itemize}
+  \item The main weakness: no empirical comparison with closest competitor (Ozaki scheme).
+  \item Arguably narrow novelty, but absolutely fine in the context of a thesis.
+  \item As argued above: evaluation uses only synthetic uniformly-random inputs
+  \item Sustainability claims (SDG 9, 12) are unsubstantiated --- energy is never measured.
+  \item Threshold (NZT=0.25) is fixed without justification or sensitivity analysis.
+\end{itemize}
+
+Section 4.5 (error bound derivation) is dense and hard for the reader.
+It's the most difficult to understand.
+I struggle to give suggestions on how to write it better, though.
+
+Structurally, is standard and easy to follow.
+Chapters are mostly well sized in relation.
+The author has a tendency to be verbally extensive.
+The background (Ch.~2) is simply too long.
+Discussion (Ch.~8) is mostly recap of Ch.~7 --- in my opinion it could be sharper.
+
+\section{Outlook and Concluding Assessment}
+The work is nothing but solid.
+The three-precision composition is novel as an explicit framing, however, mechanically close to prior work.
+Adaptive splitting is a useful, if narrow, contribution.
+
+Ethics are handled adequately.
+Data is synthetic, sources are credited.
+Sustainability and Development Goals Nr. 12 (Responsible Consumption) is claimed but \emph{not} substantiated
+--- no energy or CO2 estimations.
+This is a missed opportunity, especially given Future Work suggests it, because main findings might help improve computational efficiency.
+
+A competent, well-executed engineering thesis with rigorous error analysis and honest experimental reporting.
+The contribution is an extension of precision refinement to three precisions plus a simple runtime filter.
+It is clearly motivated, well-bounded, and the empirical investigation is thorough within chosen scope.
+Main weaknesses are the limited evaluation breadth (one GPU, synthetic inputs, no competitor benchmarks).
+
+\section{Seminar Questions}
+\begin{enumerate}[leftmargin=*]
+  \item Your recommendation is \q{use 3 FP16 matrices}. Does/How does this recommendation change for real-world inputs?
+    E.g.~covariance matrices or density matrices may have values that are heavily skewed rather than uniform on $[a,b]$?
+  \item The NZT threshold is fixed at 0.25. How sensitive are $t_{\text{total}}$ and $e_{\text{avg}}$ to this choice? Is there a way to pick NZT from properties of the input matrix?
+  \item Memory consumption prevents you from running $n=32768$.
+    Could the intermediate $A_iA_j$ products be streamed/fused into the combination step to cut peak memory, given that the combination kernel sums them anyway?
+  \item You made certain assumptions for your theoretical error bound. What assumption could you drop to tighten it and how would that change the bound?
+  \item From your perspective, what is missing in your thesis? How could further improvement on precision refinement look like and what alternative approaches look promising?
+  \item On what basis did you mention the increase of energy efficiency of your work?
+    In what ballpark could the savings be?
+\end{enumerate}
+
+\end{document}
