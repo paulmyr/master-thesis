@@ -275,6 +275,10 @@ morekeywords={begin, todo, textbf, textit, texttt}
 ]{doclicense}
 \end{comment}
 
+% Make figure/table captions visually distinct from body text
+\captionsetup{font=footnotesize, labelfont=bf}
+%\captionsetup{font={small,it},labelfont=bf}
+
 \begin{document}
 %\selectlanguage{swedish}
 %
@@ -418,9 +422,6 @@ ger
 \itodo{Keywords german}
 \iwarning{The eight \texttt{\textbackslash itodo} items above are already covered by the consolidated preamble note further down (items a--f). Pick one location and delete the other to avoid drift.}
 
-\merror{Can I change template variables? E.g. I find the figure descriptions hard to distinguish from main text, change I change the font size of figure captions?}
-\iwarning{This \texttt{\textbackslash merror} is a question-to-self about template styling, not thesis content. Resolve it (yes, you can override caption font via \texttt{caption} package's \texttt{\textbackslash captionsetup\{font=...\}}) and remove the annotation.}
-
 \itodo{Preamble issues to address (cannot annotate there directly): (a) \texttt{\textbackslash subtitle} still says ``THESIS SUB TOPIC''; (b) \texttt{\textbackslash alttitle}/\texttt{\textbackslash altsubtitle} are template Swedish placeholders; (c) Swedish + German keywords are \texttt{TODO}; (d) presentation date 2022-03-15, Zoom URL \texttt{ddddddddddd}, default address; (e) opponent ``A. B. Normal''; (f) TRITA \texttt{2022:00}; (g) duplicate (commented) glossary setup at lines 55--58 vs 122--125 --- delete the dead block; (h) commented-out \texttt{doclicense} block (CC) is dead config; (i) \texttt{XML} listing language and \texttt{\textbackslash colorbitbox} bytefield helper appear unused for a neuron-model thesis; (j) \texttt{\textbackslash sweExpl} is defined then immediately silenced via \texttt{\textbackslash renewcommand}; (k) verify \texttt{\textbackslash generalExpl}, \texttt{\textbackslash warningExpl}, \texttt{\textbackslash mtodo}, \texttt{\textbackslash deadline}, \texttt{\textbackslash ttodo}, and the \texttt{L} column type are actually used in \texttt{content/}.}
 
 % End of Abstract
@@ -513,39 +514,63 @@ Spike threshold            & \multicolumn{5}{c}{$0$\,mV} \\
 To characterise the optimisation problem independently of any particular training run, we computed each of the four loss functions on a dense two-parameter grid ($20 \times 20 = 400$ points per pair) for 28 parameter pairs, for a total of $11{,}200$ simulations and $\sim$3.8\,h of compute.
 The remaining parameters were held at the default initial values of \cref{tab:adex_params}.
 
-\begin{figure}[t]
-  \begin{center}
+\begin{figure}[h]
+  \centering
+  \begin{subfigure}{\textwidth}
     \includegraphics[width=\textwidth]{figures/mse_loss_landscape_grid.pdf}
-  \end{center}
+    \caption{Loss landscape.}\label{fig:results:mse-loss-landscape}
+  \end{subfigure}
+  \begin{subfigure}{\textwidth}
+    \includegraphics[width=\textwidth]{figures/mse_grad_landscape_grid.pdf}
+    \caption{Gradient landscape.}\label{fig:results:mse-grad-landscape}
+  \end{subfigure}
   \caption{The MSE loss landscape --- even in these simplified conditions where only two parameters at a time are changed ---
-is characterized by lots of local minima. Some parameter combinations are also characterized by long shallow valleys.}\label{fig:results:mse-loss-landscape}
+is characterized by lots of local minima. Some parameter combinations are also characterized by long shallow valleys.}
 \end{figure}
 
-\begin{figure}[t]
-  \begin{center}
+\begin{figure}[h]
+  \centering
+  \begin{subfigure}{\textwidth}
     \includegraphics[width=\textwidth]{figures/soft-dtw_loss_landscape_grid.pdf}
-  \end{center}
+    \caption{Loss landscape.}\label{fig:results:sdtw-loss-landscape}
+  \end{subfigure}
+  \begin{subfigure}{\textwidth}
+    \includegraphics[width=\textwidth]{figures/soft-dtw_grad_landscape_grid.pdf}
+    \caption{Gradient landscape.}\label{fig:results:sdtw-grad-landscape}
+  \end{subfigure}
   \caption{When observing the \gls{SDTW} loss landscape, we identify very thin and deep valleys containing the global minima.
 This is correlating with the observtion, that \gls{SDTW} was only able to recover very small parameter perturbations.
-For larger perturbations, gradients were close to 0, which can be explained by the large loss plateaus visible. }\label{fig:results:sdtw-loss-landscape}
+For larger perturbations, gradients were close to 0, which can be explained by the large loss plateaus visible.}
 \end{figure}
 
-\begin{figure}[t]
-  \begin{center}
+\begin{figure}[h]
+  \centering
+  \begin{subfigure}{\textwidth}
     \includegraphics[width=\textwidth]{figures/vanrossum_loss_landscape_grid.pdf}
-  \end{center}
+    \caption{Loss landscape.}\label{fig:results:vanrossum-loss-landscape}
+  \end{subfigure}
+  \begin{subfigure}{\textwidth}
+    \includegraphics[width=\textwidth]{figures/vanrossum_grad_landscape_grid.pdf}
+    \caption{Gradient landscape.}\label{fig:results:vanrossum-grad-landscape}
+  \end{subfigure}
   \caption{The Van-Rossum loss promises to be a more interesting candidate based on these loss landscape plots.
 For example, the local minima are less pronounced than in the \gls{MSE} landscape, even though still present.
-The global minima valleys tend to be less narrow compared to \gls{SDTW}; however, they still tend to be surrounded by large loss plateaus.}\label{fig:results:vanrossum-loss-landscape}
+The global minima valleys tend to be less narrow compared to \gls{SDTW}; however, they still tend to be surrounded by large loss plateaus.}
 \end{figure}
 
-\begin{figure}
-  \begin{center}
+\begin{figure}[h]
+  \centering
+  \begin{subfigure}{\textwidth}
     \includegraphics[width=\textwidth]{figures/guarino_loss_landscape_grid.pdf}
-  \end{center}
+    \caption{Loss landscape.}\label{fig:results:guarino-loss-landscape}
+  \end{subfigure}
+  \begin{subfigure}{\textwidth}
+    \includegraphics[width=\textwidth]{figures/guarino_grad_landscape_grid.pdf}
+    \caption{Gradient landscape.}\label{fig:results:guarino-grad-landscape}
+  \end{subfigure}
   \caption{The feature-based loss shares lots of similarities with the Van-Rossum loss.
 It seems to be the most resistant against local minima in this testing configuration.
-However, it shares the large loss plateaus which could indicate small-to-zero gradients for ill conditioned initial parameters.}\label{fig:results:guarino-loss-landscape}
+However, it shares the large loss plateaus which could indicate small-to-zero gradients for ill conditioned initial parameters.}
 \end{figure}
 
 % End of Appendix
@@ -571,5 +596,6 @@ However, it shares the large loss plateaus which could indicate small-to-zero gr
 commentstyle=\color{black}, backgroundcolor=\color{white}]{lib/acronyms.tex}
 }
 {}
+
 
 \end{document}

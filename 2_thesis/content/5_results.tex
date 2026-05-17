@@ -4,10 +4,8 @@ This chapter reports four classes of empirical results in service of the central
 \Cref{sec:results:verification} establishes that the forward model is correct, by comparing our \texttt{Jaxley} \gls{AdEx} channel and its surrogate-gradient variant against Brian2 on three reference parameter sets;
 this is a precondition for the rest of the chapter, since it rules out the possibility that any later failure is an artefact of the dynamics rather than a property of the optimisation.
 \Cref{sec:results:landscape} characterises the loss surfaces the optimiser actually descends, on a $20\times 20$ two-parameter sweep over all $\binom{8}{2}=28$ trainable pairs for each of four differentiable losses, supplemented by focused panels that isolate one diagnostic feature per loss.
-The picture is a thin spiking valley flanked by a large non-spiking plateau on which the surrogate gradient supplies a direction not aligned with the valley --- a geometric prediction of the failure modes we later confirm in benchmarks.
-\Cref{sec:results:training} reports what happens when an optimiser is run on those surfaces:
-a worked example in which gradient-based recovery succeeds, followed by a recovery-radius benchmark over $2{,}700$ paired runs that compares three differentiable losses against two Nelder--Mead baselines on identical perturbed initialisations.
-\Cref{sec:results:outlook} sketches what the same setup produces on a real recording as a proof of concept that motivates the experimental-trace direction in the future-work chapter.
+The picture is a thin spiking valley flanked by a large non-spiking plateau.
+\Cref{sec:results:training} reports what happens when an optimiser is run on those surfaces: two worked examples (one synthetic, one on a real recording) and a recovery-radius benchmark over $2{,}700$ paired runs that compares three differentiable losses against two Nelder--Mead baselines on identical perturbed initialisations.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{An AdEx Channel for Jaxley}\label{sec:results:verification}
@@ -72,119 +70,141 @@ At a fixed operating point the magnitudes span more than twenty orders of magnit
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Loss Function Analysis}\label{sec:results:landscape}
 
-Before we report parameter-recovery numbers in \cref{sec:results:training}, this section characterises the geometry of the loss surfaces the optimiser actually descends.
-The motivation is diagnostic: a flat success/failure number does not say \emph{why} a method fails, and the recovery-radius benchmark in \cref{sec:results:baseline} will show that all three differentiable losses fail in similar aggregate but for visibly different reasons.
-We therefore look at the shape of each loss directly --- the position of the spiking valley, the extent of the non-spiking plateau, and the direction of the gradient on that plateau --- and use these geometric features to predict the failure modes the benchmark later confirms.
+Before we report parameter-recovery numbers in \cref{sec:results:training}, this section characterises the geometry of the loss surfaces.
+The motivation is diagnostic: a flat success/failure number does not say \emph{why} the method fails.
+The recovery-radius benchmark in \cref{sec:results:baseline} will show that all three differentiable losses fail --- they do so for different reasons.
+We therefore look at the shape of each loss directly: the position of the spiking valley, the extent of the non-spiking plateau, and the direction of the gradient on that plateau.
+The geometric features predict the failure modes the benchmark later confirms.
 
-For every $\binom{8}{2}=28$ pair of trainable parameters we evaluate four differentiable losses (\gls{MSE}, \gls{SDTW}, the Guarino feature-based loss, and the Van Rossum distance) on a $20\times 20$ grid spanning the parameter bounds; the remaining six parameters are held at the Naud \texttt{adaptation} reference values of \cref{sec:method:adex:verification}.
-The same grid evaluation produces a paired gradient field $\nabla_{\theta}\mathcal{L}$ via JAX autodiff, shown overlaid on the loss surface as a quiver.
-The full $4\times 28$ triangle of loss and gradient panels is reproduced in \cref{sec:app:loss};
-the subsections below pick the two pairs per loss that are most diagnostic of that loss's behaviour.
+For every $\binom{8}{2}=28$ pair of trainable parameters we evaluate four differentiable losses (\gls{MSE}, \gls{SDTW}, the Guarino feature-based loss, and the Van Rossum distance) on a $20\times 20$ grid spanning the parameter bounds;
+the remaining six parameters are held at the Naud \texttt{adaptation} reference values of \cref{sec:method:adex:verification}.
+The same grid evaluation produces a paired gradient field $\nabla_{\theta}\mathcal{L}$ via JAX autodiff.
+Gradient computations were performed using a sigmoid surrogate with $\beta = 5.0$.
+The magnitude is displayed for the 5 parameters used in the benchmark (for compute time reasons).
+Loss and gradient panels can be found in \cref{sec:app:loss};
 
 \subsection{Shared structure across losses}\label{sec:results:landscape:shared}
-
 Three features recur across every loss surface we plot (\cref{sec:app:loss}):
 \begin{itemize}
-  \item \textbf{Narrow low-loss valleys.} The spiking region forms thin, curved valleys rather than isotropic basins.
+  \item \textbf{Narrow low-loss valleys.} The spiking region forms thin, curved valleys rather than isotropic (round, bowl shaped) basins.
         Valleys are often parallel to one axis (e.g.\ $g_L$--$E_L$ trades off along a single direction),
         meaning small updates along the wrong axis leave the loss unchanged.
   \item \textbf{Large non-spiking plateaus.} Substantial regions of parameter space yield a constant (or near-constant) loss because no spikes are produced and the loss reduces to a target-only constant.
         Soft spike-detection terms supply a residual gradient on these plateaus, but the gradient is small and its direction is not constrained by the true distance to the spiking valley.
-  \item \textbf{Plateau gradient magnitude, not direction.} On the spike-aware losses (Guarino, Van Rossum) the surrogate supplies a small but non-zero gradient on the non-spiking plateau via $\sigma'(V - V_{\mathrm{th}})$.
-        When read in bound-normalised coordinates the resulting plateau gradient is typically \emph{directionally informative} --- it points toward the spiking transition rather than along an iso-contour (\cref{sec:results:landscape:vanrossum}) --- but its magnitude is several orders below the gradient inside the spiking region, so without an adaptive step size an optimiser initialised on the plateau makes only negligible progress per epoch.
-        \gls{MSE} is the structural exception (\cref{sec:results:landscape:mse}): the plateau gradient points actively \emph{away} from the spiking valley, because eliminating the simulated spikes lowers the pointwise voltage error more than aligning them ever can.
+  \item \textbf{Plateau gradient magnitude, not direction.} On the spike-aware losses (Guarino, Van Rossum) the surrogate can supply a small but non-zero gradient on the non-spiking plateau via $\sigma'(V - V_{\mathrm{th}})$.
+        The resulting gradient direction does not point necessarily toward the spiking transition, see \cref{fig:guarino-landscape-focus}.
+        In any case, its magnitude is several orders below the gradient inside the spiking region.
 \end{itemize}
 
-The three subsections that follow show what these shared features look like in each loss individually, and where the losses differ in ways that matter for gradient descent.
+The three subsections that follow show what these shared features look like in each loss individually.
+Before that a word about how gradient magnitudes vary between parameters.
+
+\subsubsection*{Gradient magnitude asymmetry between parameters}
+
+\begin{figure}[t]
+  \begin{center}
+    \includegraphics[width=0.7\textwidth]{figures/loss_landscape_focus_vanrossum_a_tau_w_grad2d_superspike_10.pdf}
+  \end{center}
+  \caption{Van Rossum bound-normalised gradient field on the $a$--$\tau_w$ plane in the \texttt{adaptation} scenario (ground truth $a=2$\,nS, $\tau_w=300$\,ms).
+SuperSpike surrogate, $\beta=10$.
+The colour scale spans six orders of magnitude in bound-normalised sensitivity, but the quiver is dominated by the horizontal component throughout: $|\partial\mathcal{L}/\partial a \cdot \Delta a| \gg |\partial\mathcal{L}/\partial \tau_w \cdot \Delta \tau_w|$ across the whole slice.}\label{fig:vanrossum-a-tauw}
+\end{figure}
+
+There are huge differences between how susceptible to change different parameters are.
+\Cref{fig:vanrossum-a-tauw} shows the bound-normalised gradient field on the $(a, \tau_w)$ plane around the Naud \texttt{adaptation} reference point ($a=2$\,nS, $\tau_w=300$\,ms), under Van Rossum with SuperSpike $\beta=10$.
+The quiver is dominated by the horizontal ($a$) component at essentially every grid cell, even after bound-normalisation puts the two axes on the same dimensionless scale.
+This is a real geometric property, not the unit-scaling artefact.
+It is mostly explained by a structural asymmetry in how AdEx parameters enter the dynamics.
+One class ($E_L$, $g_L$, $C_m$, $V_T$, $a$) enters the right-hand side of the membrane or adaptation equation at every timestep, so a small perturbation rescales or shifts $V(t)$ (or $w(t)$) at every point along the trajectory and accumulates loss sensitivity over the full integration window.
+A second class ($b$, $\tau_w$, $\Delta_T$) only feeds into the dynamics through narrow channels.
+$b$ acts as a discrete kick on $w$ at spike times, so its gradient is gated by spike events and vanishes whenever the cell is silent or near-silent.
+$\tau_w$ is a relaxation timescale whose effect is only visible in longer simulations.
+$\Delta_T$ enters an exponential whose value is dominated by $V_T$ at most operating points.
+The bound-normalised gradient field inherits this asymmetry directly.
+Rescaled units cannot make $b$ act outside spike events, nor make $\tau_w$ act on timescales the stim window does not visit.
+The $(a, \tau_w)$ slice above is one instance of this pattern; the same imbalance recurs whenever a continuously-acting parameter is paired with an event-driven or timescale one, and it is one of the reasons $b$ and $\tau_w$ are systematically harder to recover.
 
 \subsection{Mean Squared Error: the non-spiking attractor}\label{sec:results:landscape:mse}
 
-The \gls{MSE} surface is the most extreme case of the plateau pathology.
-Across all 28 parameter pairs (\cref{sec:app:loss}) the surface separates into two distinct regimes:
-a thin spiking valley aligned with the $g_L$--$E_L$ direction, and a much larger non-spiking basin whose loss value sits an order of magnitude \emph{below} the values inside the spiking valley.
-The asymmetry is structural: when the simulated cell stops spiking, the squared difference between $V_{\mathrm{sim}}(t)$ and the target trace is dominated by the residual subthreshold mismatch only;
-when it spikes but with imperfect timing, every misaligned spike contributes an error on the order of $(V_{\mathrm{peak}}-V_{\mathrm{rest}})^{2}$.
-The non-spiking region is therefore a genuine minimum of the \gls{MSE} objective, not an artefact of the surrogate or of the soft approximations used elsewhere.
-
-This geometry has an immediate empirical signature in training: starting from a perturbed but spiking initialisation, the \gls{MSE} optimiser deletes the simulated spikes rather than aligning them, because deleting spikes is the lower-loss move.
-\Cref{fig:mse-training-results} shows the resulting trajectory on the Naud \texttt{adaptation} target: the recovered trace tracks the resting potential with no spikes, and the loss decreases monotonically across all $50$ epochs.
-
-\begin{figure}
+\begin{figure}[t]
   \begin{center}
     \includegraphics[width=0.95\textwidth]{figures/mse_training_results.pdf}
   \end{center}
   \caption{
-\gls{MSE} training result on the \texttt{adaptation} target.
+\gls{MSE} training result on voltage recordings of a mouse straital projection neuron.
 (a) The optimiser converges to a non-spiking subthreshold solution (blue) that tracks the experimental resting potential but produces no spikes.
 (b) The loss decreases monotonically, confirming that the non-spiking solution is a genuine local minimum of the \gls{MSE} objective --- eliminating spikes reduces point-wise error more effectively than aligning them.
 }\label{fig:mse-training-results}
 \end{figure}
 
-The bias of the plateau gradient in \cref{sec:results:landscape:shared} is therefore particularly damaging here:
-\gls{MSE}'s gradient on the plateau does not merely fail to point toward the valley, it points actively away from it.
-This geometry predicts the benchmark outcome reported in \cref{sec:results:baseline}, where \texttt{grad\_mse} sits at or below the no-optimisation floor on every scenario.
-The behaviour is correct with respect to the objective:
-the loss landscape itself rewards subthreshold solutions, and a working optimiser will find them.
+The \gls{MSE} surface has visibly the most amount of local minima.
+This reflects the behaviour that for different spike counts, the loss function performs best in the most similar subthreshold regimes.
+Across all 28 parameter pairs the surfaces display thin, axis-aligned spiking valleys.
+We observe large magnitudes in parameter areas where VanRossum and Guarino show small loss values.
+This indicates that error is aggregated based on small timing mis-alignments.
 
-\subsection{Guarino: a narrow valley with biased plateau gradients}\label{sec:results:landscape:guarino}
+This geometry has an immediate empirical signature in training: starting from a tonic spiking initialisation, the \gls{MSE} optimiser deletes the simulated spikes rather than aligning them, because deleting spikes is the easier to reach loss target.
+\Cref{fig:mse-training-results} shows the resulting trajectory on voltage recordings of a mouse straital projection neuron:
+the trace tracks the resting potential with no spikes, and the loss decreases monotonically across all $50$ epochs.
+\gls{MSE}'s plateau gradient therefore points \emph{away} from the spiking valley rather than toward it.
 
-The Guarino feature-based loss replaces \gls{MSE}'s point-wise voltage comparison with a weighted sum of relative errors on eight discrete spike features (\cref{sec:method:opt:loss:feature-loss}), supplemented by a soft validity penalty whenever the simulated trace does not produce enough spikes to evaluate a feature.
-Both changes target the failure mode diagnosed for \gls{MSE}: removing spikes is no longer cheaper than aligning them, because the missing-feature penalty contributes a large positive term to the loss whenever a feature cannot be evaluated.
+\subsection{Guarino: feature artifacts everywhere}\label{sec:results:landscape:guarino}
+
+The Guarino feature-based loss replaces \gls{MSE}'s point-wise voltage comparison with a weighted sum of relative errors on eight discrete spike features (\cref{sec:method:opt:loss:feature-loss}).
+This can be supplemented by a soft validity penalty whenever the simulated trace does not produce enough spikes to evaluate a feature.
+Both changes target the failure mode diagnosed for \gls{MSE}: removing spikes is no longer cheaper than aligning them, because the missing-feature penalty contributes a fixed positive term to the loss whenever a feature cannot be evaluated.
 The geometry near a spiking ground truth reflects this redesign.
 
 \Cref{fig:guarino-landscape-focus} shows the loss and the gradient field on the $E_L$--$g_L$ plane around the Naud \texttt{adaptation} reference point, on a logarithmic scale that spans six orders of magnitude.
 A narrow curved valley (dark purple, $\mathcal{L} \lesssim 10^{0}$) contains the ground truth and traces the locus where the leak equilibrium and conductance jointly produce the correct spike count and timing.
-The valley is bounded on the upper-left by a sharp yellow ridge ($\mathcal{L}\sim 10^{5}$) along which the missing-feature penalty turns on as the simulated trace loses spikes;
-beyond the ridge the loss settles onto a teal plateau ($\mathcal{L}\sim 10^{1}$) on which the simulated cell produces no spikes at all and the loss is dominated by the validity-penalty floor.
-The two-regime structure --- a thin spiking valley flanked by a non-spiking plateau separated by a high-loss penalty ridge --- is the qualitative pattern we labelled in \cref{sec:results:landscape:shared}, and it recurs on every Guarino panel of the appendix grid (\cref{sec:app:loss}).
+In the top left corner, the missing-feature penalty turns on as the simulated trace loses spikes;
+The plateau is bounded on the upper-left by a sharp yellow ridge ($\mathcal{L}\sim 10^{5}$).
+This is an interesting artifact of the feature based loss we constructed: the non-spiking area attributes a fixed penalty per feature.
+Paramaters within the yellow ridge area produce voltage traces with a single or very little spikes.
+This disables the fixed added penalty, and instead large errors (e.g. in spike frequency) lead to huge loss values --- gradient signals on the plateau therefor \emph{discourage} from moving into the optimal direction.
+All of this behaviour is basically irrelevant for sampling-based losses, which indicates why Guarino performs well in the benchmark when combined with Nelder-Mead.
 
 \begin{figure}[t]
   \begin{center}
     \includegraphics[width=0.49\textwidth]{figures/guarino_focus_E_L_g_L_loss.pdf}\hfill
-    \includegraphics[width=0.49\textwidth]{figures/loss_landscape_focus_guarino_E_L_g_L_grad2d_superspike_10.pdf}
+    \includegraphics[width=0.49\textwidth]{figures/guarino_focus_E_L_g_L_grad.pdf}
+    %\includegraphics[width=0.49\textwidth]{figures/loss_landscape_focus_guarino_E_L_g_L_grad2d_superspike_10.pdf}
   \end{center}
   \caption{Guarino loss landscape (left) and bound-normalised gradient field (right) on the $E_L$--$g_L$ plane around the Naud \texttt{adaptation} reference point.
 SuperSpike surrogate, $\beta = 10$.
 Left: $\mathcal{L}_{\mathrm{Guarino}}$ on a log scale spanning six orders of magnitude.
-Right: $\|\nabla\mathcal{L}\odot\Delta\theta\|_{2}$ on a log scale, with the unit-direction quiver of steepest ascent overlaid.
-The ground-truth marker sits inside the narrow curved valley of low loss (dark purple, left), bounded on the upper-left by the missing-feature penalty ridge (yellow) where the simulated trace loses a spike;
-the plateau beyond the ridge (teal, $\mathcal{L}\sim 10^{1}$) is the validity-penalty floor.
-On the right panel the penalty ridge dominates the gradient magnitude ($\sim 10^{7}$), and the plateau gradient outside the ridge is non-zero ($\sim 10^{2}$--$10^{3}$ in bound-normalised units) and uniformly directional, pointing south-east toward the valley.}\label{fig:guarino-landscape-focus}
+Right: $\|\nabla\mathcal{L}\odot\Delta\theta\|_{2}$ on a log scale.
+Arrows show the unit direction of steepest \emph{ascent} in bound-normalised coordinates; the optimiser steps opposite.
+The ground-truth marker sits inside the narrow curved valley of low loss (dark purple, left), bounded on the upper-left by the low spike frequency, high loss penalty ridge (yellow),
+The top left corner shows the plateau where the simulated trace loses all spikes.
+On the right panel the penalty ridge dominates the gradient magnitude ($\sim 10^{7}$).
+The plateau gradient outside the ridge is non-zero ($\sim 10^{2}$--$10^{3}$ in bound-normalised units) and uniformly directional, pointing south-east toward the ridge.}\label{fig:guarino-landscape-focus}
 \end{figure}
 
-The right panel of \cref{fig:guarino-landscape-focus} makes the directional behaviour of the gradient explicit.
-Three observations follow.
-First, $\|\nabla\mathcal{L}\odot\Delta\theta\|_{2}$ spans five orders of magnitude across this single slice ($\sim 10^{2}$ in the plateau interior to $\sim 10^{7}$ on the penalty ridge);
-a fixed learning rate cannot be appropriate in both regimes, which is the empirical motivation for Polyak step-size normalisation (\cref{sec:method:opt:stabilization:polyak}).
-Second, on the non-spiking plateau the gradient field is approximately uniform --- arrows point in essentially the same south-east direction across a region tens of millivolts wide, and that direction is the descent direction toward the valley, not an iso-contour.
-The plateau gradient is therefore informative directionally;
-the magnitude on the plateau is $\sim 10^{4}$ below the ridge but still well above floating-point noise, so an optimiser initialised on the plateau receives a usable but slow signal back toward the valley.
-Third, the largest gradients sit on the penalty ridge itself, not at the ground truth:
-an optimiser whose trajectory crosses the ridge receives a sudden gradient signal whose direction is set by the surrogate kernel of the soft validity flag rather than by the spike-train error inside the valley.
-This is the displacement of the surrogate-smoothed minimum from the true minimum that drives the surrogate-bias argument of \cref{sec:discussion:bias}, made geometrically visible.
+Overall we can make three observations the right panel of \cref{fig:guarino-landscape-focus}.
+First, $\|\nabla\mathcal{L}\odot\Delta\theta\|_{2}$ spans five orders of magnitude across this single slice: $\sim 10^{2}$ in the plateau interior to $\sim 10^{7}$ on the penalty ridge.
+Second, on the non-spiking plateau the gradient field is approximately uniform --- arrows point in essentially the same south-east direction across a region tens of millivolts wide, and that direction is the descent direction toward the ridge, whereas on the other side of the ridge, gradient behaviour is a lot more chaotic, varying over multiple orders of magnitude between evaluated points.
+Third, the largest gradients sit on the penalty ridge itself, not at the ground truth.
+All of this highlight the difficulties when applying feature based losses to gradient methods.
+The sheer amount of hyperparameter needed to successfully finetune this loss may simply be too high (features specific weights, penalties, smoothness parameters, ...).
 
-The benchmark results in \cref{sec:results:baseline} are consistent with this picture.
-\texttt{grad\_guarino} achieves $\delta_{50}=0.02$ on tonic and initial-bursting and fails the floor on adaptation;
-that is, gradient-based recovery succeeds only when the perturbed initial point already sits close to or inside the valley.
-The plateau gradient does carry a usable signal toward the valley, but at the magnitudes shown above the per-step parameter update is too small to traverse the plateau within the $25$-epoch budget the benchmark allows, and the optimiser stalls outside the valley.
-
-\subsection{Van Rossum: a smoother loss path, a noisier gradient}\label{sec:results:landscape:vanrossum}
+\subsection{Van Rossum: a smoother loss, still chaotic gradient}\label{sec:results:landscape:vanrossum}
 
 The Van Rossum distance (\cref{sec:method:opt:loss:van-rossum}) is the only loss in our comparison that supplies a smooth path from the spike train $s(t)$ to the loss value: the exponential kernel $K$ and the $L^{2}$ norm are themselves differentiable, so no softness hyperparameter is required to make the loss path smooth.
-The Guarino loss compounds the surrogate gradient with a second smoothing layer (sigmoid-gated validity flags on top of soft spike-feature extraction);
-Van Rossum strips that second layer away.
 The geometric prediction is that the Van Rossum surface should be smoother in the spiking regime than Guarino's --- the kernel convolution averages over a $\tau_{\mathrm{kernel}}$-wide window, so small spike-timing perturbations no longer produce discrete penalty-ridge transitions.
 The empirical picture in the bound-normalised gradient field is more nuanced.
 
-\Cref{fig:vanrossum-grad-focus} shows the Van Rossum gradient field on the same $E_L$--$g_L$ slice and surrogate configuration as the Guarino panel of \cref{fig:guarino-landscape-focus} (SuperSpike, $\beta=10$), so the two figures differ only in the loss.
+\Cref{fig:vanrossum-grad-focus} shows the Van Rossum loss and gradient field on the same $E_L$--$g_L$ slice and surrogate configuration as the Guarino panel of \cref{fig:guarino-landscape-focus} (SuperSpike, $\beta=10$), so the two figures differ only in the loss.
 
 \begin{figure}[t]
   \begin{center}
-    \includegraphics[width=0.75\textwidth]{figures/loss_landscape_focus_vanrossum_E_L_g_L_grad2d_superspike_10.pdf}
+    \includegraphics[width=0.49\textwidth]{figures/vanrossum_focus_E_L_g_L_loss.pdf}\hfill
+    \includegraphics[width=0.49\textwidth]{figures/vanrossum_focus_E_L_g_L_grad.pdf}
   \end{center}
-  \caption{Van Rossum bound-normalised gradient-norm landscape with quiver overlay on the $E_L$--$g_L$ plane around the Naud \texttt{adaptation} reference point.
+  \caption{$E_L$--$g_L$ plane around the Naud \texttt{adaptation} reference point. Left: Van Rossum loss, RightL: bound-normalised gradient-norm landscape with quiver overlay.
 SuperSpike surrogate, $\beta=10$, matched to \cref{fig:guarino-landscape-focus}.
-Colour: $\|\nabla\mathcal{L}\odot\Delta\theta\|_{2}$ on a log scale.
+Left: $\mathcal{L}_{VR}$ on a log scale spanning below two orders of magnitude.
+Right: $\|\nabla\mathcal{L}\odot\Delta\theta\|_{2}$ on a log scale.
 Arrows show the unit direction of steepest \emph{ascent} in bound-normalised coordinates; the optimiser steps opposite.
 The upper-left non-spiking plateau carries a small ($\sim 10^{-1}$) but directionally consistent ascent gradient.
 The lower-right spiking region exhibits a granular pattern of order-of-magnitude jumps between neighbouring grid cells:
@@ -192,29 +212,27 @@ the surrogate's narrow active window plus the binary $s(t)$ mean that a single g
 \end{figure}
 
 Two contrasts with the Guarino panel stand out.
-First, the missing-feature penalty ridge of \cref{fig:guarino-landscape-focus} is absent:
-Van Rossum has no discrete penalty for losing a spike, so the loss climbs smoothly from valley to plateau across the diagonal transition rather than jumping by four orders of magnitude.
-This is the kernel-smoothing effect the design argument predicts (\cref{sec:method:opt:loss:van-rossum}) and is consistent with the modestly larger basin of attraction observed for \texttt{grad\_vanrossum} on \texttt{adaptation} (\cref{sec:results:baseline}: $\delta_{50}=0.05$, the only gradient method to strictly exceed the no-optimisation floor on any scenario).
+First, the feature penalty ridge of \cref{fig:guarino-landscape-focus} is absent:
+Van Rossum has no discrete penalty for losing a 'feature', so the loss climbs monotone and smoothly from valley to plateau across the diagonal transition rather than jumping by four orders of magnitude.
+This is aided by the kernel-smoothing effect the design argument predicts (\cref{sec:method:opt:loss:van-rossum}).
 Second, the bound-normalised plateau gradient is much smaller for Van Rossum ($\sim 10^{-1}$) than for Guarino ($\sim 10^{2}$):
 without the validity-flag penalty's soft-gated contribution, the only signal on the plateau comes from $\sigma'(V - V_{\mathrm{th}})$ in the brief window when the leak dynamics carry $V$ near threshold, which on the non-spiking plateau happens rarely or not at all.
-The kernel-smoothing benefit on the spiking branch is therefore paid for by a weaker plateau gradient on the non-spiking branch ---
-the optimiser inherits the same magnitude-bottleneck failure mode as Guarino, just from a different source.
+The kernel-smoothing benefit on the spiking branch is therefore paid for by a weaker plateau gradient on the non-spiking branch.
+This could be described as a magnitude bottleneck, and explains the non-moving parameters in non spiking starting configuations.
 
 The spiking region (lower-right of the diagonal) is \emph{not} the smooth basin the kernel-convolution argument would suggest in isolation.
-Instead it is dominated by a high-contrast checkerboard of bright and dark patches whose magnitudes differ by an order of magnitude between neighbouring grid cells.
-Read mechanistically:
-the binary indicator $s(t)$ for any given spike depends on whether $V(t)$ enters the surrogate's $\sim 4/\beta$ mV active window, so a small parameter perturbation can shift one spike's threshold-crossing across a single timestep and add or remove an event from the trace.
+Instead, it is dominated by a high-contrast checkerboard of bright and dark patches whose magnitudes differ by an order of magnitude between neighbouring grid cells.
+This might be explained by the binary indicator $s(t)$: small parameter perturbation can shift one spike's threshold-crossing across a single timestep and add or remove an event from the trace.
 The Van Rossum loss reads this as a discrete jump in $K \ast s(t)$, and the autodiff backward pass attributes the jump via \texttt{custom\_vjp} to the surrogate kernel at that timestep, producing a gradient at the affected grid cell that is large but uncorrelated with its neighbours' gradients.
 The kernel convolution smooths the loss over timing perturbations of \emph{existing} spikes;
 it does not smooth over spike-count changes, which is what dominates the region near and beyond the ground truth at any finite $\beta$.
 
-\subsubsection*{Surrogate-family dependence: the dead-neuron tradeoff}
+\subsubsection*{Surrogate-family dependence}
 
-The geometry above is computed under SuperSpike;
-the surrogate family itself is a load-bearing choice, and not the choice the methodology of \cref{sec:method:surrogate-gradients:implementation} names as default.
-\Cref{fig:vanrossum-surrogate-sweep} reports the same Van Rossum gradient field on the same slice for SuperSpike and sigmoid at three surrogate slopes $\beta\in\{5,10,25\}$.
+\Cref{fig:vanrossum-surrogate-sweep} reports the same Van Rossum gradient field on the same slice for SuperSpike and sigmoid surrogates at three slopes $\beta\in\{5,10,25\}$.
+All six panels use identical axes, the same loss, and the same forward simulation; only the backward-pass surrogate kernel changes.
 
-\begin{figure}[p]
+\begin{figure}[t]
   \begin{center}
     \includegraphics[width=0.32\textwidth]{figures/loss_landscape_focus_vanrossum_E_L_g_L_grad2d_superspike_5.pdf}\hfill
     \includegraphics[width=0.32\textwidth]{figures/loss_landscape_focus_vanrossum_E_L_g_L_grad2d_superspike_10.pdf}\hfill
@@ -225,114 +243,27 @@ the surrogate family itself is a load-bearing choice, and not the choice the met
   \end{center}
   \caption{Van Rossum bound-normalised gradient field on the $E_L$--$g_L$ plane around the Naud \texttt{adaptation} reference point, swept over surrogate family and slope.
 Top row: SuperSpike ($\beta=5, 10, 25$). Bottom row: sigmoid ($\beta=5, 10, 25$).
-All six panels use identical axes, the same loss, and the same forward simulation; only the backward-pass surrogate kernel changes.
-SuperSpike's heavy tail $1/(\beta|x|+1)^2$ produces gradient signal across the entire plane at every $\beta$;
-the sigmoid's exponentially-suppressed $\sigma'(\beta x) = \sigma(\beta x)(1-\sigma(\beta x))$ collapses to numerical noise off-threshold, with the dead zone (black) growing from the non-spiking plateau at $\beta=5$ to nearly the entire plane at $\beta=25$.
-Note the colour-scale ranges: the sigmoid panels reach magnitudes as low as $10^{-27}$, well below denormalised float32 precision.}\label{fig:vanrossum-surrogate-sweep}
+SuperSpike's heavy tail $1/(\beta|x|+1)^2$ produces gradient signal across the entire plane at every $\beta$: spiking-region magnitudes shrink from $\sim 10^{6}$ at $\beta=5$ to $\sim 10^{2}$ at $\beta=25$, but the spatial coverage is preserved.
+The sigmoid's exponentially-suppressed $\sigma'(\beta x) = \sigma(\beta x)(1-\sigma(\beta x))$ collapses to numerical noise off-threshold: the dead zone (black) covers the non-spiking plateau at $\beta=5$, most of the slice at $\beta=10$, and the entire plane at $\beta=25$ (magnitudes reach $10^{-27}$, well below denormalised float32 precision).}\label{fig:vanrossum-surrogate-sweep}
 \end{figure}
 
-The contrast is not subtle.
-SuperSpike's heavy-tailed kernel keeps gradients alive across the entire slice at every $\beta$ tested:
-the spiking-region magnitudes shrink from $\sim 10^{6}$ at $\beta=5$ to $\sim 10^{2}$ at $\beta=25$, and the plateau magnitude shrinks correspondingly, but the directional structure and the spatial coverage are preserved.
-The sigmoid kernel, by contrast, exhibits the dead-neuron problem characterised by Gygax \& Zenke~\cite{Gygax2025} in pure geometric form:
-even at the broad setting $\beta=5$ the upper-left non-spiking plateau is black (gradient at or below numerical noise);
-at $\beta=10$ the dead zone has expanded to cover most of the slice;
-at $\beta=25$ only a sparse pattern of isolated grid cells retains any gradient at all, with the remaining ``alive'' cells reporting magnitudes near $10^{-15}$ --- two to three orders of magnitude below the float32 epsilon.
-This is the empirical reason the recovery-radius benchmark uses SuperSpike $\beta=6$ for the gradient methods (\cref{tab:training-params}) rather than the sigmoid $\beta=5$ named as the verification default in \cref{sec:method:surrogate-gradients:implementation}:
-at the benchmark's perturbation scales, the sigmoid would land most random initialisations on dead-zone grid cells where no descent step is possible regardless of the loss function used.
-
-\subsubsection*{Surrogate-bypass via voltage features: an asymmetry between Guarino and Van Rossum}
-
-The dead-zone diagnosis above admits an exception that is empirically informative.
-Compare \cref{fig:vanrossum-surrogate-sweep}'s sigmoid $\beta=10$ Van Rossum panel against the same surrogate setting under the Guarino loss (\cref{fig:guarino-sigmoid-vs-vrsubthresh}, left): under Van Rossum the slice is dead almost everywhere;
-under Guarino the slice is alive ($\sim 10^{0}$--$10^{2}$ in bound-normalised units) with a uniform downward-pointing plateau gradient that is the geometric mirror of its SuperSpike counterpart.
-The two losses share the same forward simulation, the same surrogate kernel, and the same $V(t)$ trajectory.
-What separates them is the loss decomposition.
-
-\begin{figure}[t]
-  \begin{center}
-    \includegraphics[width=0.49\textwidth]{figures/loss_landscape_focus_guarino_E_L_g_L_grad2d_sigmoid_10.pdf}\hfill
-    \includegraphics[width=0.49\textwidth]{figures/loss_landscape_focus_vanrossum_E_L_g_L_grad2d_sigmoid_10_weightsubthreshold_03.pdf}
-  \end{center}
-  \caption{Surrogate-bypass via direct voltage features.
-Both panels use the sigmoid surrogate at $\beta=10$ --- the setting that produces a near-total dead zone for plain Van Rossum (cf.\ \cref{fig:vanrossum-surrogate-sweep}, bottom-middle).
-Left: Guarino loss.
-Right: Van Rossum with $\lambda_{\mathrm{sub}}=0.3$ (\cref{eq:vr-sub}).
-In both, the entire slice carries non-zero gradient with magnitudes in the $10^{-1}$--$10^{1}$ range (Van Rossum) and $10^{-2}$--$10^{2}$ range (Guarino), and the plateau quiver points uniformly toward the spiking transition.
-The diagonal stripes visible in the right panel are iso-contours of the subthreshold equilibrium voltage $E_L + I/g_L$ --- direct evidence that the rescuing signal is the voltage path, not the spike path.}\label{fig:guarino-sigmoid-vs-vrsubthresh}
-\end{figure}
-
-Of Guarino's eight features, seven are extracted from the binary spike train $s(t)$ and therefore route their parameter gradient through the surrogate $\partial s / \partial V$ (the same path that VR uses).
-The eighth is the voltage at the end of the stimulus window, $V_{\mathrm{stimend}} = V[T_{\mathrm{stim}}]$, which is read directly off the simulated voltage trace and routes its gradient through the leak dynamics with no surrogate in the path:
-on the non-spiking plateau the reset never fires ($s\equiv 0$ implies $V_{\mathrm{new}} = (1-s)V = V$ at every step), so $\partial V[T_{\mathrm{stim}}]/\partial \theta$ is the well-defined gradient of an exponential relaxation toward $E_L + I/g_L$.
-This term is small in absolute loss compared to the missing-feature penalty in the spiking-failure regime, but it is the \emph{only} term whose gradient survives the sigmoid's exponential suppression on the plateau, so it is what \cref{fig:guarino-sigmoid-vs-vrsubthresh} (left) is showing.
-
-Van Rossum has no comparable term in its default form (\cref{eq:vr-discrete}): the entire loss is a function of $K\ast s$, so when $s$ is dead the loss is dead.
-The optional subthreshold term of \cref{eq:vr-sub}, included as a small-positive option in the methodology specifically ``so the optimiser is not stuck [on the no-spike plateau]'' (\cref{sec:method:opt:loss:van-rossum}), is the surrogate-bypass that Guarino enjoys by construction.
-\Cref{fig:guarino-sigmoid-vs-vrsubthresh} (right) shows what happens when that term is turned on at $\lambda_{\mathrm{sub}}=0.3$ under the same dead-surrogate setting: the slice is alive everywhere, and the diagonal stripes in the gradient magnitude trace iso-contours of $V_{\mathrm{rest}} = E_L + I/g_L$ --- exactly the dependence one would expect from a voltage-MAE term.
-
-The reading that follows is that ``the surrogate is dead'' and ``the gradient is dead'' are not the same statement.
-Whenever a loss has any term that depends on $V(t)$ without passing through $s(t)$, that term provides a surrogate-free signal path which dominates the gradient on the non-spiking plateau where surrogate-routed terms vanish.
-Guarino's $V_{\mathrm{stimend}}$ feature provides this path automatically;
-Van Rossum's $\lambda_{\mathrm{sub}}$ option provides it on demand;
-\gls{MSE} consists \emph{entirely} of this kind of term, which is exactly why \gls{MSE} is the only loss in our comparison that has a non-zero gradient on the plateau \emph{but pointing the wrong way} (\cref{sec:results:landscape:mse}).
-The shared structure across the three losses is therefore richer than ``surrogate-mediated spike-train comparison plus a soft tweak per loss'';
-it is a layered design in which a slow, voltage-based fallback term keeps the optimiser alive in the dead-neuron regime, and a fast, surrogate-based spike-aware term takes over once the cell starts firing.
-The discussion in \cref{sec:futureWork} returns to this observation in arguing for hybrid objectives.
-
-\subsubsection*{Why we cannot fit $\tau_w$: gradient asymmetry on the $(a, \tau_w)$ plane}
-
-The recovery-radius benchmark holds the adaptation parameters $(a, b, \tau_w)$ at ground truth and trains only the six membrane parameters (\cref{sec:method:opt:recovery-benchmark:scope}).
-The reason is empirical: in the per-loss training notebooks of \cref{sec:results:training} we were unable to recover $\tau_w$ from a single 100\,ms step-current trace under any of the differentiable losses, even when $a$ and $b$ were trainable in the same run.
-\Cref{fig:vanrossum-a-tauw} shows the bound-normalised gradient field on the $(a, \tau_w)$ plane around the Naud \texttt{adaptation} reference point ($a=2$\,nS, $\tau_w=300$\,ms), under Van Rossum with SuperSpike $\beta=10$.
-
-\begin{figure}[t]
-  \begin{center}
-    \includegraphics[width=0.7\textwidth]{figures/loss_landscape_focus_vanrossum_a_tau_w_grad2d_superspike_10.pdf}
-  \end{center}
-  \caption{Van Rossum bound-normalised gradient field on the $a$--$\tau_w$ plane in the \texttt{adaptation} scenario (ground truth $a=2$\,nS, $\tau_w=300$\,ms).
-SuperSpike surrogate, $\beta=10$.
-The colour scale spans six orders of magnitude in bound-normalised sensitivity but the quiver is dominated by the horizontal component throughout: $|\partial\mathcal{L}/\partial a \cdot \Delta a| \gg |\partial\mathcal{L}/\partial \tau_w \cdot \Delta \tau_w|$ across the whole slice.
-The optimiser reads any path in this plane primarily as motion in $a$;
-$\tau_w$ acquires gradient only via the granular spike-count noise pattern that is uncorrelated with the actual ground-truth location.}\label{fig:vanrossum-a-tauw}
-\end{figure}
-
-The figure makes a finding visible that the recovery-radius benchmark deliberately holds out of scope.
-The granular spike-count texture of \cref{sec:results:landscape:vanrossum} reappears here, but with one striking change: the quiver is dominated by the horizontal ($a$) component at essentially every grid cell, even after bound-normalisation puts the two axes on the same dimensionless scale.
-This is a real geometric property, not the unit-scaling artefact of the raw quiver discussed in \cref{sec:results:landscape:shared};
-it says that within a single short step-current trace, the loss responds to changes in the subthreshold adaptation strength $a$ much more strongly than to changes in the adaptation timescale $\tau_w$.
-Mechanically, $a$ enters $dw/dt$ via $a(V - E_L)$ at every timestep, so its effect on the spike train accumulates linearly in stimulus duration;
-$\tau_w$ enters via the exponential decay of $w$ between spikes, so its effect is detectable only over time windows comparable to $\tau_w$ itself, which at the Naud value of $300$\,ms is of the same order as the entire $100$\,ms simulation window.
-A single trace simply does not last long enough for $\tau_w$ to leave a strong signature on the loss, regardless of how cleverly the loss is constructed.
-
-The implication threads through the rest of the chapter.
-\Cref{sec:results:baseline} restricts the benchmark to membrane parameters precisely because the gradient signal on $\tau_w$ is too weak to support meaningful recovery from this stimulus protocol;
-the discussion in \cref{sec:discussion:nm} attributes the gradient methods' failure on $\tau_w$ to ``weak identifiability from a single trace'' rather than to any specific failure of the surrogate or the optimiser;
-and the future-work direction in \cref{sec:futureWork} that calls for multi-trace constraints (\cref{sec:method:opt:stabilization:multi-trace}) is precisely the protocol-level intervention this asymmetry argues for.
-A longer trace, or several traces with different stimulus amplitudes that drive $w$ over different ranges, would make the $\tau_w$ axis informative;
-a different loss function, applied to the same single 100\,ms trace, would not.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Parameter Recovery}\label{sec:results:training}
 
-We now turn from the geometry of the loss surfaces (\cref{sec:results:landscape}) to what happens when an optimiser actually descends them.
-Throughout this section the ground truth is one of the Naud reference parameter sets (\texttt{tonic}, \texttt{adaptation}, or \texttt{initial\_bursting})~\cite{Naud2008},
-the target voltage trace is generated with the validated \texttt{Jaxley} \gls{AdEx} implementation of \cref{sec:results:verification},
-and the trainable parameters are perturbed before optimisation.
-Because the optimiser has access to the same forward model that produced the target, any failure to recover is attributable to the loss function and the optimisation procedure rather than to model--data mismatch.
-The trainable parameters are restricted to the six membrane parameters $\{C_m, g_L, E_L, V_T, \Delta_T, V_r\}$;
-the adaptation parameters $\{a, b, \tau_w\}$ are held at their ground-truth values throughout, for the reasons established in \cref{sec:method:opt:recovery-benchmark:scope} and made geometrically explicit in \cref{sec:results:landscape:vanrossum}.
-
+We now turn from the geometry of the loss surfaces to what happens when an optimiser actually descends them.
+Throughout this section we follow the benchmark setup from \cref{sec:method:opt:recovery-benchmark}.
 The section is organised in two parts.
-\Cref{sec:results:positive-example} presents a single worked example in which gradient-based recovery succeeds cleanly --- enough to establish that the approach is viable in principle, but already revealing the per-parameter compensation that the systematic results will quantify.
-\Cref{sec:results:baseline} then reports the recovery-radius benchmark: $2{,}700$ paired runs across three firing regimes, six perturbation scales and thirty random directions, comparing the three differentiable losses against two Nelder--Mead baselines on matched initialisations.
+\Cref{sec:results:positive-example} presents a single worked example in which gradient-based recovery succeeds somewhat;
+enough to establish that the approach is viable in principle, but already revealing that the problem is under-constrained.
+%\Cref{sec:results:real-singletrace} presents an attempt on fitting parameters to real voltage recordings.
+\Cref{sec:results:baseline} then reports the recovery-radius benchmark: three differentiable losses against two Nelder--Mead baselines on matched initialisations.
 The benchmark is the headline result of the chapter, and the picture it produces is uncomfortable:
-on every scenario and every perturbation scale, gradient-based recovery falls at or below the no-optimisation floor on two losses, and exceeds it by one $\delta$-tier on a single (loss, scenario) cell;
-Nelder--Mead on the same objective recovers reliably out to two to four $\delta$-tiers further.
-The geometric features of \cref{sec:results:landscape} predict this pattern in advance.
+on every scenario and every perturbation scale, gradient-based recovery performs similar or below the no-optimisation baseline.
+Nelder--Mead on the same objective recovers reliably better.
+The geometric features of \cref{sec:results:landscape} suggest this pattern in advance.
 
 \subsection{A Worked Example: Recovering a Tonic AdEx Cell}\label{sec:results:positive-example}
-
 Before turning to the per-loss breakdown and the systematic benchmark, we present one configuration in which gradient-based fitting succeeds cleanly.
 The ground truth is the Naud tonic parameter set (\cref{sec:method:adex:verification}); the six trainable membrane parameters $\{C_m, g_L, V_r, V_T, E_L, \Delta_T\}$ are perturbed by approximately $15\,\%$ of their bound range, and the optimiser is run for $50$ epochs of single-stage training under the Guarino feature-based loss (\cref{sec:method:opt:loss:feature-loss}).
 The adaptation parameters $\{a, b, \tau_w\}$ are held at ground truth, matching the scope fixed for the recovery-radius benchmark in \cref{sec:method:opt:recovery-benchmark:scope}.
@@ -365,12 +296,35 @@ The same loss, the same hyperparameters and the same ground-truth parameter set 
 The recovery-radius benchmark of \cref{sec:results:baseline} quantifies how quickly the success region closes;
 the geometric counterpart in \cref{sec:results:landscape} explains why.
 
-
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+% \subsection{A worked example: fitting an IDthresh recording}\label{sec:results:real-singletrace}
+%
+% The second worked example fits a real cell.
+% We use a voltage recording of a mouse's striatal projection neuron from the Johansson \& Silberberg striatal recordings~\cite{Johansson2020}, cleaned up and made usable by Kozlov et al. \cite{Kozlov2025}.
+% The six trainable membrane parameters are the same as in \cref{sec:results:positive-example};
+% the adaptation parameters $(a, b, \tau_w)$ are held at initial values (for tonic spiking).
+%
+% \begin{figure}[t]
+%   \begin{center}
+%     \includegraphics[width=\textwidth]{figures/real_singletrace_553_fit}
+%   \end{center}
+%   \caption{Gradient-based fit of an IDthresh recording ($I=421$\,pA, 8 target spikes).
+% Top: voltage overlay before training (7 sim spikes, $\Gamma_{\mathrm{init}}=+0.411$).
+% Middle: after $30$ Adam epochs (8 sim spikes, $\Gamma=+1.000$, all aligned within the $\Delta=2$\,ms coincidence window).
+% Bottom: spike raster for experimental, initial and trained traces.}\label{fig:real-singletrace-fit}
+% \end{figure}
+%
+% \Cref{fig:real-singletrace-fit} reports the outcome.
+% The training loss falls from $3.28$ to $0.30$ over the first $30$ epochs;
+% at the best-loss checkpoint (epoch $29$) the trained simulation produces $8$ spikes against the target's $8$, with $\Gamma=+1.000$ at $\Delta=4$\,ms tolerance.
+% The largest parameter movement during training is $|\Delta C_m| \approx 0.17$\,pF on a bound range of $230$\,pF (one part in $1{,}300$); the other five parameters move by less.
+% Subthreshold trajectories between spikes diverge visibly from the recording, but the spike count, firing frequency and all eight spike timings match within the coincidence-factor window.
+
 \subsection{Recovery-Radius Benchmark}\label{sec:results:baseline}
-The worked example of \cref{sec:results:positive-example} shows that gradient-based recovery is possible in at least one configuration; it does not establish how robust the recovery is, nor how it compares against a derivative-free baseline on the same objective.
+The worked example of \cref{sec:results:positive-example} show that gradient-based recovery can be possible;
+however, even a broken clock is right twice a day.
+It does not establish how robust the recovery is, nor how it compares against a derivative-free baseline on the same objective.
 The recovery-radius benchmark of \cref{sec:method:opt:recovery-benchmark} answers both questions on a single instrument: it aggregates parameter recovery over $5\,\text{methods}\times 3\,\text{scenarios}\times 6\,\text{perturbations}\times 30\,\text{directions}=2700$ paired runs, producing a recovery-success curve per method and a single recovery radius per (scenario, method) pair.
 
 \subsubsection{Headline result: success vs.\ perturbation}
@@ -391,14 +345,8 @@ Four observations stand out.
 First, all gradient methods perform similar or worse than the initialisation floor.
 Even for tiny perturbations, the gradient approach struggled to faithfully recover original parameters.
 Second, both Nelder--Mead variants dominate every gradient method on every scenario at every $\delta$: they have the largest recovery radii and the highest success rates inside them.
-Third, \texttt{grad\_mse} performed consistently the worst.
-This follows from the landscape evidence in \cref{sec:results:landscape:mse}: pointwise voltage \gls{MSE} actively pulls the optimiser into the non-spiking subthreshold regime, so for most random directions training \emph{worsens} the fit relative to the perturbed initialisation.
-Fourth, the two Nelder--Mead variants are indistinguishable: \texttt{nm\_guarino} (soft features, matching the surface \texttt{grad\_guarino} sees) and \texttt{nm\_guarino\_hard} (exact features, the configuration Guarino et al.~\cite{Guarino2025} use with evolutionary search) report identical $\delta_{50}\in\{0.2,0.2,0.4\}$ and identical median $\Gamma_{0.05}=+1.00$ on every scenario, with per-direction outcomes differing by at most one direction out of 30.
-
-\subsubsection{Soft vs.\ hard features for Nelder--Mead}\label{sec:results:nm-soft-vs-hard}
-Since the soft and hard variants are empirically indistinguishable at this evaluation budget, the soft features are a faithful surrogate for the true Guarino objective in the perturbation regime this benchmark spans.
-This rules out two objections to the gradient-vs-simplex comparison: \texttt{nm\_guarino} is not advantaged by a smoothed loss (the simplex reaches the same radius on the hard objective), and the gap between gradient methods and the simplex is not a soft-feature-bias artefact.
-What remains, and what the next chapter argues drives the gap, is the surrogate gradient itself and the non-spiking plateau (\cref{sec:results:landscape}) over which it points in a biased direction.
+Third, \texttt{grad\_mse} performed consistently the worst, consistent with the \gls{MSE} landscape geometry of \cref{sec:results:landscape:mse}.
+Fourth, the two Nelder--Mead variants are indistinguishable: \texttt{nm\_guarino} (soft features) and \texttt{nm\_guarino\_hard} (exact features) report identical $\delta_{50}\in\{0.2,0.2,0.4\}$ and identical median $\Gamma_{0.05}=+1.00$ on every scenario, with per-direction outcomes differing by at most one direction out of 30.\label{sec:results:nm-soft-vs-hard}
 
 \subsubsection{Recovery radii}
 \Cref{tab:results-summary} reports two summary statistics per (scenario, method) pair:
@@ -427,96 +375,15 @@ The median at $\delta = 0.05$ is the most diagnostic single number: $\delta = 0.
 \end{tabular}
 \end{table}
 
-\subsubsection{Per-parameter recovery error}
-The success rate $P(\Gamma>0.5)$ aggregates over the entire parameter vector and tells us nothing about \emph{which} parameters individual methods recover.
-\Cref{fig:recovery-per-param} breaks the same runs down by parameter, reporting the median absolute recovery error
-$|\hat\theta_i - \theta^*_i| / (\theta_{\max,i} - \theta_{\min,i})$
-at $\delta = 0.05$.
-The membrane parameters $\{C_m, g_L, E_L, V_T, \Delta_T, V_r\}$ are the only optimisation targets in this benchmark (\cref{sec:method:opt:recovery-benchmark:scope});
-the adaptation parameters $\{a, b, \tau_w\}$ are held at ground truth, so their bars are zero by construction and exist only to make explicit which axes the benchmark deliberately does not interrogate.
-This separation is the bridge into the limitation discussed in the next section: \emph{nothing in this benchmark constrains adaptation parameters, because the gradient asymmetry on the $(a, \tau_w)$ plane (\cref{sec:results:landscape:vanrossum}) shows single-trace fits cannot identify them.}
-
-\begin{figure}[t]
-  \begin{center}
-    \includegraphics[width=0.95\textwidth]{figures/recovery_per_parameter.pdf}
-  \end{center}
-  \caption{Median per-parameter recovery error at $\delta = 0.05$, by method and scenario.
-Errors are normalised by parameter bound width.
-Adaptation parameters are visually separated to emphasise that they are held at ground truth in this benchmark; their identifiability from a single trace is discussed in \cref{ch:discussion}.}\label{fig:recovery-per-param}
-\end{figure}
-
 \subsubsection{What the benchmark does not measure}
 Three caveats determine how far the conclusions in \cref{ch:discussion} are entitled to go.
+
 \textbf{Synthetic targets.} The benchmark recovers parameters of a model from data generated by the same model, so it measures the optimisation problem in isolation, not the model--data mismatch one would face on real recordings; this is by design (\cref{sec:method:opt:recovery-benchmark}) but means the radii reported here are upper bounds on what the same setup achieves experimentally.
-\textbf{Single trace.} A single 100\,ms step current is not enough to pin down the adaptation parameters; the multi-trace extension of \cref{sec:method:opt:stabilization:multi-trace} is the natural address but lies outside the benchmark's scope.
-\textbf{Fixed hyperparameters.} The configurations in \cref{tab:training-params} are the validated single-stage settings; per-scenario or per-$\delta$ HP tuning would shift radii up but is exactly the kind of tuning the user does not have when fitting a real cell. The radii reported here are therefore meant to characterise the methods as one would actually deploy them, not their best possible behaviour under unconstrained tuning.
 
+\textbf{Single trace.} A single 100\,ms step current is not enough to pin down the model parameters;
+the problem is under-constraint.
+The multi-trace extension of \cref{sec:method:opt:stabilization:multi-trace} is the natural address but lies outside the benchmark's scope.
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\section{Outlook: Training on Voltage Recordings}\label{sec:results:outlook}
-
-The recovery-radius benchmark of \cref{sec:results:baseline} fits synthetic targets generated by the same forward model used in optimisation;
-it measures the optimisation problem in isolation but says nothing about how the setup behaves on a real recording.
-This section reports a single proof-of-concept fit on an experimental trace from the Johansson \& Silberberg striatal recordings~\cite{Johansson2020}, intended to bound the rest of the chapter rather than to extend the benchmark to real data.
-The full benchmark on experimental traces is left as future work (\cref{sec:futureWork}).
-
-We fit the IDthresh recording at $I=421$\,pA (trace identifier 553) from the cell used as a worked example by the existing fitting pipeline in our codebase.
-The target is the experimental voltage trace cropped to a $300$\,ms window around the stimulus, in which the cell fires $8$ spikes at $\sim 27$\,Hz.
-The same six membrane parameters as the recovery-radius benchmark of \cref{sec:results:baseline} are trained;
-the adaptation parameters $(a, b, \tau_w)$ are held at initial values, for the same identifiability reasons developed in \cref{sec:results:landscape:vanrossum}.
-The loss is Guarino feature-based with the per-cell weights from the existing single-trace pipeline (heavy weight on the first three spike times and on the firing frequency, light weight on the spike-count regulariser);
-the surrogate is SuperSpike $\beta=25$ rather than the broad $\beta=6$ used in the benchmark.
-The sharp surrogate is usable here because, as established in \cref{sec:results:landscape:vanrossum}, the Guarino loss has a $V_{\mathrm{stimend}}$ term whose gradient bypasses the surrogate;
-the dead-zone failure mode that would kill a pure spike-train loss at $\beta=25$ does not apply.
-The optimiser is Adam at learning rate $10^{-3}$, sigmoid bound reparameterisation, $80$ epochs;
-\texttt{return\_best=True} keeps the lowest-loss checkpoint.
-
-Two ingredients make the result possible.
-First, the initial parameter vector was hand-tuned by coarse manual search until the unoptimised forward simulation produced $7$ spikes against the target's $8$ at $\Gamma_{\mathrm{init}}=+0.411$ ($\Delta=4$\,ms tolerance) --- already above the success threshold the rest of the chapter uses.
-Second, the gradient run is best understood as a refinement step on top of that hand-picked starting point rather than as a basin search;
-the largest parameter movement during training is $|\Delta C_m| \approx 0.17$\,pF on a bound range of $230$\,pF (about one part in $1{,}300$), and the other five parameters move by even less.
-
-\begin{figure}[t]
-  \begin{center}
-    \includegraphics[width=\textwidth]{figures/real_singletrace_553_fit}
-  \end{center}
-  \caption{Single-trace gradient-based fit of an IDthresh recording ($I=421$\,pA, 8 target spikes).
-Top: voltage overlay before training --- the hand-tuned initial parameters produce $7$ spikes at $\Gamma_{\mathrm{init}}=+0.411$.
-Middle: voltage overlay after $30$ Adam epochs --- $8$ spikes at $\Gamma=+1.000$ (all eight aligned within the $\Delta=4$\,ms coincidence window).
-Bottom: spike raster for the three traces.
-Training moved the six trainable membrane parameters by less than one part in a thousand of their bound width;
-the gradient method is acting as a fine-grained refinement on a deliberately-good initialisation, not as a recovery from a random starting point.}\label{fig:real-singletrace-fit}
-\end{figure}
-
-\Cref{fig:real-singletrace-fit} reports the outcome.
-The trained simulation reproduces the experimental spike train spike-for-spike, with $\Gamma=+1.000$ at $\Delta=4$\,ms tolerance (a more lenient window than the $\Delta=2$\,ms used for the synthetic benchmark, justified here by the increased timing jitter of experimental recordings) --- the maximum coincidence factor attainable.
-The training loss falls from $3.28$ to $0.30$ over the first $30$ epochs and then becomes noisy as discrete spike-count transitions interact with the sharp surrogate's narrow active window;
-\texttt{return\_best} pins the reported result to the epoch-$29$ minimum.
-Subthreshold trajectories between spikes diverge visibly from the recording --- the cell's biophysical complexity is not captured by six membrane parameters --- but the spike count, firing frequency and spike timings all match within the precision the coincidence factor measures.
-For context, Jolivet et al.~\cite{Jolivet2008} report $\Gamma \approx 0.82$ as state-of-the-art performance for fitting simplified neuron models to real recordings;
-the value we report here is on a single trace, in a regime where the initial point was already very close, and should be read as a sanity check that gradient-based refinement is feasible on real data rather than as a competitive benchmark number.
-
-The result intentionally does not refute the recovery-radius benchmark's negative conclusion.
-The benchmark says gradient descent does not enlarge the basin of attraction relative to the Nelder--Mead simplex on the synthetic recovery problem;
-this section says that, given a basin-of-attraction-sized initial guess (whether hand-tuned, NM-derived, or otherwise pre-conditioned), gradient descent can polish it to a high-precision fit on a real recording.
-The two findings are consistent and together suggest the deployment workflow described in \cref{sec:futureWork}: derivative-free search for the basin, gradient descent for the refinement.
-Three caveats bound the generality of the single fit reported here.
-
-\textbf{Initialisation was hand-tuned, not searched.}
-The hand-tuning landed us at $\Gamma_{\mathrm{init}}=+0.411$ before training even began.
-Reaching that starting point required manual constraint reasoning ($E_L \approx V_{\mathrm{rest}}$, $g_L$ small enough that $V_\infty > V_T - \Delta_T$, $C_m/g_L \approx $ target ISI/$2$) plus a coarse grid search;
-neither step was automated.
-The conclusion's recommendation to seed gradient descent from a Nelder--Mead fit (\cref{sec:futureWork}) would replace this manual step with the simplex baseline that already wins the recovery-radius benchmark.
-
-\textbf{Single trace at a single stimulus amplitude.}
-The fit constrains the membrane parameters from one $300$\,ms step-current trace.
-A single trace contains no information that can disambiguate parameter combinations producing the same firing pattern under one stimulus from those that diverge under another (\cref{sec:method:opt:stabilization:multi-trace}), and gives no leverage on the adaptation parameters (\cref{sec:results:landscape:vanrossum}).
-A multi-trace extension following the $\texttt{vmap}$-batched simulation pattern of \texttt{training\_synthetic\_multitrace.ipynb} is the natural next step.
-
-\textbf{Hyperparameters were tuned per-fit, not transferred from the benchmark.}
-The surrogate ($\beta=25$ vs the benchmark's $\beta=6$), the optimiser (Adam vs Polyak), and the loss-weight vector were all chosen to fit this cell on this trace.
-Cell-to-cell generalisation would require either a per-cell tuning protocol or a single robust configuration validated across a population of recordings;
-neither is in scope for this thesis.
-
-The conclusion (\cref{ch:conclusionsAndFutureWork}) returns to this proof of concept when arguing that the gradient-based pipeline's contribution lies in refinement rather than in basin search.
-
+\textbf{Fixed hyperparameters.} The configurations in \cref{tab:training-params} are the hyperparameters used in this single-stage setting;
+per-scenario, per-$\delta$ or per-method HP tuning could possibly shift radii up --- this is part of the tuning problem which we will discuss in the next chapter (ch. \ref{ch:discussion}).
+The radii reported here are therefore meant to characterise the methods as one would actually deploy them, not their best possible behaviour under unconstrained tuning.
