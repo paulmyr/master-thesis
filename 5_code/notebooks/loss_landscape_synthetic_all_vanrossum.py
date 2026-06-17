@@ -100,15 +100,7 @@ stim_end_index = t_max_ms  # already 0-based in cropped trace
 exp_spike_train = jnp.array(sim_init.spikes)
 
 loss_name = "VanRossum"
-loss_fn = make_van_rossum_loss_fn(
-    cell=cell,
-    data_stimuli=data_stimuli,
-    t_max=t_max,
-    dt_ms=dt_ms,
-    exp_spike_train=exp_spike_train,
-    stim_end_index=len(sim_init.voltage),
-    loss_config=VanRossumLossConfig(),
-)
+loss_fn = make_van_rossum_loss_fn(cell=cell, data_stimuli=data_stimuli, t_max=t_max, dt_ms=dt_ms, exp_spike_train=exp_spike_train, stim_end_index=len(sim_init.voltage), loss_config=VanRossumLossConfig())
 
 
 # Build param name -> index mapping

@@ -653,7 +653,7 @@ def parameter_comparison_plot(
 
 
 def fit_before_after_plot(
-    trace: TraceData,
+    trace: TraceData | Sequence[TraceData],
     sim_initial: SimulationResult,
     sim_trained: SimulationResult | Sequence[SimulationResult],
     coincidence: CoincidenceResult | Sequence[CoincidenceResult | None] | None = None,
@@ -668,7 +668,10 @@ def fit_before_after_plot(
     gets its own "After" row. Passing a single SimulationResult works as before.
 
     Args:
-        trace: Experimental TraceData
+        trace: Experimental TraceData, or a sequence of TraceData (one per trained
+            sim) when each stage was fit against a different trace / stimulus window.
+            A single TraceData is broadcast to every trained sim. The first trace is
+            used as the reference for the "before" row and (single-trace) x-limits.
         sim_initial: SimulationResult with initial parameters
         sim_trained: Single or sequence of trained SimulationResults
         coincidence: Single or sequence of CoincidenceResults (one per trained sim).
@@ -690,6 +693,21 @@ def fit_before_after_plot(
 
     n_trained = len(trained_sims)
 
+    # Normalize traces: a single TraceData is broadcast to every trained sim; a
+    # sequence must line up one-to-one with the trained sims (one stimulus per stage).
+    if isinstance(trace, Sequence):
+        traces = list(trace)
+        if len(traces) != n_trained:
+            raise ValueError(
+                f"Got {len(traces)} traces for {n_trained} trained sims; pass one "
+                "trace per trained sim or a single trace to share across all."
+            )
+    else:
+        traces = [trace] * n_trained
+    ref_trace = traces[0]
+    # Multiple distinct stimuli -> each row needs its own x-window (no shared axis).
+    multi_trace = any(t is not ref_trace for t in traces)
+
     if coincidence is None:
         coincidences: list[CoincidenceResult | None] = [None] * n_trained
     elif not isinstance(coincidence, Sequence):
@@ -707,28 +725,30 @@ def fit_before_after_plot(
 
     trained_colors = ["tab:blue", "tab:green", "tab:red", "tab:purple", "tab:cyan"]
 
+    def _window(tr: TraceData) -> tuple[float, float]:
+        start = tr.time[tr.stim_start_idx] - padding_ms
+        end = tr.time[min(tr.stim_end_idx, len(tr.time) - 1)] + padding_ms
+        return start, end
+
     # 1 row for "before" + 1 row per trained sim + 1 row for spike raster
     n_rows = 1 + n_trained + 1
-    fig, axes = plt.subplots(n_rows, 1, figsize=figsize, sharex=True)
+    # With distinct per-stage stimuli the windows differ, so axes can't share x.
+    fig, axes = plt.subplots(n_rows, 1, figsize=figsize, sharex=not multi_trace)
 
-    n = min(
-        len(trace.time), len(sim_initial.time), *(len(s.time) for s in trained_sims)
-    )
-    time = trace.time[:n]
-
-    # Row 1: Before
+    # Row 1: Before (reference trace vs initial sim)
+    n_before = min(len(ref_trace.time), len(sim_initial.time))
     ax_before = axes[0]
     ax_before.plot(
-        time,
-        trace.voltage[:n],
+        ref_trace.time[:n_before],
+        ref_trace.voltage[:n_before],
         color="k",
         linewidth=0.6,
         alpha=0.7,
-        label=f"Experimental ({trace.n_spikes})",
+        label=f"Experimental ({ref_trace.n_spikes})",
     )
     ax_before.plot(
-        sim_initial.time[:n],
-        sim_initial.voltage[:n],
+        sim_initial.time[:n_before],
+        sim_initial.voltage[:n_before],
         color="tab:orange",
         linewidth=0.6,
         label=f"Initial ({sim_initial.n_spikes})",
@@ -737,26 +757,29 @@ def fit_before_after_plot(
     ax_before.legend(fontsize=8, loc="upper right")
     ax_before.set_title("Before training", fontsize=9)
     ax_before.grid(True, alpha=0.2)
+    if stim_window_only:
+        ax_before.set_xlim(*_window(ref_trace))
 
-    # Rows 2..N: After (one per trained sim)
-    for i, (sim, cf, label, color) in enumerate(
-        zip(trained_sims, coincidences, sim_labels, trained_colors)
+    # Rows 2..N: After (one per trained sim, each against its own stage trace)
+    for i, (tr, sim, cf, label, color) in enumerate(
+        zip(traces, trained_sims, coincidences, sim_labels, trained_colors)
     ):
         ax = axes[1 + i]
+        ni = min(len(tr.time), len(sim.time))
         ax.plot(
-            time,
-            trace.voltage[:n],
+            tr.time[:ni],
+            tr.voltage[:ni],
             color="k",
             linewidth=0.6,
             alpha=0.7,
-            label=f"Experimental ({trace.n_spikes})",
+            label=f"Experimental ({tr.n_spikes})",
         )
         trained_label = f"{label} ({sim.n_spikes})"
         if cf is not None:
             trained_label += f" | Γ={cf.gamma:.3f}"
         ax.plot(
-            sim.time[:n],
-            sim.voltage[:n],
+            sim.time[:ni],
+            sim.voltage[:ni],
             color=color,
             linewidth=0.6,
             label=trained_label,
@@ -768,6 +791,8 @@ def fit_before_after_plot(
             title += f" | Γ={cf.gamma:.3f}"
         ax.set_title(title, fontsize=9)
         ax.grid(True, alpha=0.2)
+        if stim_window_only:
+            ax.set_xlim(*_window(tr))
 
     # Last row: Spike raster
     ax_raster = axes[-1]
@@ -775,8 +800,15 @@ def fit_before_after_plot(
     colors = []
     y_labels = []
 
-    if len(trace.spike_times) > 0:
-        trains.append(trace.spike_times)
+    if multi_trace:
+        # Distinct targets per stage -> show each stage's experimental spikes.
+        for tr, label in zip(traces, sim_labels):
+            if len(tr.spike_times) > 0:
+                trains.append(tr.spike_times)
+                colors.append("k")
+                y_labels.append(f"Exp {label}")
+    elif len(ref_trace.spike_times) > 0:
+        trains.append(ref_trace.spike_times)
         colors.append("k")
         y_labels.append("Exp")
     if len(sim_initial.spike_times) > 0:
@@ -795,11 +827,6 @@ def fit_before_after_plot(
         ax_raster.set_yticklabels(y_labels, fontsize=8)
     ax_raster.set_xlabel("Time (ms)")
     ax_raster.grid(True, alpha=0.2, axis="x")
-
-    if stim_window_only:
-        t_start = trace.time[trace.stim_start_idx] - padding_ms
-        t_end = trace.time[min(trace.stim_end_idx, len(trace.time) - 1)] + padding_ms
-        axes[0].set_xlim(t_start, t_end)
 
     fig.tight_layout()
     return fig

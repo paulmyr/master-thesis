@@ -8,23 +8,48 @@
 
 \section{Future Work}
 \label{sec:future-work}
-\itodo{write future work}
+
+\Cref{sec:discussion:klos} already mentioned investigating the use of different neuron models
+--- in the context of surrogate-gradient based optimisation and using differentiable models.
+This would allow us to understand better the contribution of surrogate biases.
+
+A second very interesting future work topic would be designing and evaluating different loss functions.
+Investigating efforts that might have been established in Signal-Processing, different areas of \gls{ML},
+or other research areas could lead to interesting transfer applications.
+Better understanding the affect of loss functions when gradient-based optimisation works well
+(e.g. in the context of using \gls{HH}-type models) might provide valuable insights.
+In the context of feature-based losses we mentioned the problem of too many hyperparameters.
+This is made worse when taking feature weighing into account --- this is a problem of multi-objective optimisation.
+Pareto fronts have not been explored or discussed in the context of this work due to time constraints.
+They might help 
+
+Analysing different stabilisation techniques to reduce vanishing/exploding gradients could 
+most likely improve the qualitative results of this method.
+Using multi-trace optimisation could help with the under-constrained fundamental problem of fitting the AdEx
+model to spike timings, which is an essential next step in the task of neuron model fitting.
 
 \section{Reflections}
 \label{sec:reflections}
-% The most economically and socially relevant aspect of this work is the negative result itself.
-% \gls{HPC}-scale gradient-based parameter fitting of biophysical neuron models, as exemplified by \texttt{Jaxley}~\cite{Deistler2025}, is an attractive proposition precisely because GPU acceleration and automatic differentiation promise orders-of-magnitude speedups over derivative-free methods on Hodgkin--Huxley-type models.
-% The implicit expectation is that the same speedup transfers to simplified models via surrogate gradients.
-% This thesis provides evidence that, for \gls{AdEx} at least, that transfer is not automatic:
-% on the recovery task we study, a CPU Nelder--Mead simplex outperforms GPU-friendly gradient descent on a like-for-like loss, by a margin that matters.
-% Researchers planning to commit compute and engineering effort to surrogate-gradient pipelines for biophysical fitting should factor this in;
-% the contribution that goes furthest is not building the pipeline but characterising honestly what it does and does not deliver.
-%
-% On the environmental side, the practical recommendation that follows is that derivative-free baselines should be retained alongside gradient-based methods in any fitting workflow.
-% A typical fitting study runs many fits to characterise hyperparameter sensitivity and cell-to-cell variation;
-% if Nelder--Mead achieves comparable or better radii at a fraction of the GPU usage --- which it does in our experiments, with $\sim$5--10\,s per run on CPU --- the lower-energy method is also the better-performing one.
-% This is a context-specific recommendation: nothing in this thesis argues against gradient-based fitting in general, only against deploying it in a regime where its theoretical advantages do not materialise in practice.
-%
-% On the ethical side, the work raises no concerns specific to its conduct.
-% All data are simulated or sourced from the publicly released Johansson \& Silberberg recordings under their original ethics approval;
-% no new animal experiments were performed for this thesis.
+
+% Don't forget that there must be a chapter dealing with aspects of your work and ethics,
+% sustainability and relations with the surrounding community.
+
+The work does not raise ethical concerns.
+All neuron recordings are simulated or sourced from the publicly released Johansson \& Silberberg recordings under their original ethics approval.
+No animal experiments or were performed for this thesis.
+Any positive results might actually help to reduce need of real recordings by more enabling more accurate,
+large-scale brain simulations.
+
+The most economically and socially relevant aspect of this work is the negative result itself.
+\gls{HPC}-scale gradient-based parameter fitting of biophysical neuron models,
+as exemplified by \texttt{Jaxley}~\cite{Deistler2025},
+is an attractive proposition precisely because GPU acceleration and automatic differentiation promise orders-of-magnitude
+speedups over derivative-free methods on Hodgkin--Huxley-type models.
+This thesis provides evidence that, for \gls{AdEx} at least, that transfer is not automatic.
+Researchers planning to commit compute and engineering effort to surrogate-gradient pipelines for biophysical fitting
+should factor this in;
+However, the provided implementation also enables GPU-based implementations of different optimisation methods
+through the underlying \texttt{JAX} layer.
+
+Energy consumption was kept to a minimal.
+Almost all computations were performed on a single Apple M1 Macbook.

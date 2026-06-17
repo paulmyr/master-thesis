@@ -492,6 +492,70 @@ loss closures (~20 lines). Low implementation risk.
 
 ---
 
+### 11. Initial voltage baked at cell construction (loss is blind to E_L on V(0))
+
+**Why it matters:**
+`create_adex_cell()` in `5_code/ADoptEX/core/simulation.py` sets `cell.set("v", params["E_L"])`
+at construction time. The trainable parameter list registered via
+`cell.make_trainable("AdEx_E_L")` controls dynamics during `jx.integrate`, but `jx.integrate(
+params=...)` overrides only registered parameter slots — the initial state `v` is read from
+`cell.nodes["v"]`, which holds whatever the construction-time `E_L` was. Result: every loss
+evaluation starts from V(0) = init_E_L regardless of what `E_L` the optimizer is currently
+testing.
+
+**Concrete failure mode** (reproduced in `5_code/notebooks/subthreshold_grad_vs_nm.ipynb`):
+Subthreshold MSE comparison of Adam vs Nelder-Mead. Adam recovers `E_L ≈ −69.9` (near GT
+−70), NM recovers `E_L ≈ −75.2` (far). Visually the Adam trace matches GT throughout, NM
+starts 5 mV too low. But the reported MSE is **lower for NM** (3.36 vs 3.64). Inside the
+loss both methods start at V(0) = init_E_L = −65 (init E_L was clipped to the upper bound by
+the perturbation), so the V(0) mismatch contributes ~25 squared-mV at t=0 for both. NM's
+slower τ then accidentally tracks GT's intermediate rise better than Adam's fast settle, and
+NM wins the loss by a degenerate route the optimizer should not be able to take.
+
+**Workaround in use today:**
+Notebook-level `cell.set("v", float(voltage_gt[0]))` after `setup_trainable_cell(...)`. Pins
+V(0) to the observed baseline so every loss eval starts where GT starts and only the
+dynamics are being scored. Fragile — easy to forget in new notebooks, and only correct when
+a baseline voltage is available.
+
+**Approach options (in increasing scope):**
+1. **Library-API workaround**: add `v_init: float | None = None` to `setup_trainable_cell`
+   (and `simulate_with_current_trace` for symmetry). When passed, the helper calls
+   `cell.set("v", v_init)` after construction. Cheapest, but still on the caller to remember.
+2. **Pre-equilibrate**: prepend `≥5·τ_max` of zero current to the stimulus inside the loss
+   so V relaxes to the *current* `E_L` before the real stim starts. Requires the GT trace
+   to be regenerated with the same padding, and slows every forward sim. Awkward.
+3. **Make V(0) genuinely overridable per `jx.integrate` call**: either route `E_L` through
+   both the channel param and the initial state at each eval, or expose `v` as something
+   `jx.integrate(params=[{"v": ...}])` can move. Requires Jaxley-side work — `init_fn` reads
+   `v` from `cell.nodes` via `get_all_states(pstate)`, and `pstate` doesn't currently cover
+   state-level slots. Cleanest semantically, biggest change.
+
+**Files involved:**
+- `5_code/ADoptEX/core/simulation.py:163` — the `cell.set("v", params["E_L"])` line that
+  bakes the value
+- `5_code/ADoptEX/training/trainer.py:168-216` — `setup_trainable_cell` would gain the
+  `v_init` parameter under approach (1)
+- `3_jaxley/jaxley/integrate.py` and `modules/base.py:get_all_states` — under approach (3)
+
+**Verification (for any approach):**
+- Re-run `subthreshold_grad_vs_nm.ipynb` without the manual `cell.set("v", ...)` override.
+  Adam's reported `best_loss` should be strictly less than NM's `res.fun` (matching what
+  the recovered-traces plot shows), and `manual_mse(v_grad)` should equal `best_loss` to
+  fp precision (the off-by-one fix from a separate change handles this side).
+- The "loss-cell vs simulate_jaxley" voltage gap at the recovered params should be zero
+  (currently it is ~5 mV at t=0 when init E_L ≠ GT E_L).
+
+**Scope:** Approach 1 ≈ 5 lines + 1-2 tests. Approach 3 is a Jaxley-fork change of unknown
+size — needs scoping if pursued.
+
+**Relationship to other items:**
+- Orthogonal to items 1-10 (none of them touch initial state)
+- Surfaces whenever `E_L` is trainable, which is in essentially every training notebook;
+  the symptom is most obvious in subthreshold/MSE regimes where V(0) accuracy dominates
+
+---
+
 ## Jaxley Building Blocks Reference
 
 | Tool | Location | Signature |
@@ -520,3 +584,31 @@ Suggested batches:
 2. **Batch B** (next): Items 3 + 4 -- training loop changes, moderate complexity
 3. **Batch C** (then): Items 5 + 6 + 9 + 10 -- loss preprocessing + per-param LR + trainable C_m + windowed curriculum
 4. **Batch D** (if needed): Items 7 + 8 -- multi-start and TBPTT
+
+---
+
+## RESOLVED: Initial-condition transient biased E_L (subthreshold fitting)
+
+**Symptom.** Fitting subthreshold voltage traces, `C_m`/`g_L` recovered ground truth but
+`E_L` consistently overshot (trained toward ~-73 mV).
+
+**Root cause.** Every simulation started at Jaxley's hardcoded default `v(0) = -70 mV`
+(`3_jaxley/jaxley/modules/compartment.py:37`), regardless of the data's resting level. The
+mismatch produced an artificial initial transient (exponential relaxation, τ = C_m/g_L) that
+the data does not contain. To minimize integrated error over that fake transient, the
+optimizer biased the parameter that sets the resting offset — `E_L`.
+
+**Fix (implemented).** Set the cell's initial voltage to the target trace's first sample at
+creation time: `create_adex_cell(..., v_init=data.voltage[0])` calls `cell.set("v", v_init)`.
+The simulation then starts where the data starts, so there is no artificial transient to bias
+`E_L`. `setup_trainable_cell(..., v_init=...)` and `simulate_with_current_trace(..., v_init=...)`
+forward the same value.
+
+**Design (simple, per user).** No callbacks, no injected simulator, no init-state provider —
+the initial condition is just a `v_init` argument on cell creation. The loss factories take
+`(cell, data_stimuli, t_max, dt_ms, <target data>)` and run `jx.integrate` directly; they never
+touch the initial state. A short-lived injected-`simulate` / `make_steady_state_init`
+abstraction was prototyped and then reverted in favour of this `v_init` approach.
+
+When re-simulating trained params for a fit plot, pass the same `v_init=data.voltage[0]` or the
+re-simulation will start at −70 mV and show a transient the training never had.

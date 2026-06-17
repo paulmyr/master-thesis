@@ -171,6 +171,7 @@ def setup_trainable_cell(
     dt_ms: float,
     config: TrainingConfig | None = None,
     trainable_params: list[str] | None = None,
+    v_init: float | None = None,
 ) -> tuple[jx.Cell, tuple, float, list[dict]]:
     """
     Create a Jaxley cell with trainable AdEx parameters and data stimulation.
@@ -186,6 +187,9 @@ def setup_trainable_cell(
             and default trainable_params list)
         trainable_params: List of parameter names to make trainable.
             If None, uses config.trainable_params or default set.
+        v_init: Initial membrane voltage (mV). Pass the target trace's first
+            sample (e.g. data.voltage[0]) so training starts where the data
+            starts instead of the default -70 mV.
 
     Returns:
         Tuple of (cell, data_stimuli, t_max, trainable_params_list)
@@ -206,6 +210,7 @@ def setup_trainable_cell(
         trainable=True,
         trainable_params=trainable_params,
         record=True,
+        v_init=v_init,
     )
 
     # Convert pA → nA and setup data stimulation
@@ -557,6 +562,12 @@ def train(
             log.warning("NaN/Inf gradients at epoch %d — stopping early", epoch)
             break
 
+        # Snapshot the params at which `loss` was just computed, before optax
+        # overwrites `trainable_params`. Needed so best_trainable_params lines
+        # up with the loss value we record below (optax.apply_updates returns a
+        # new pytree, so this alias stays pinned to the pre-update tree).
+        params_at_loss = trainable_params
+
         # Update parameters
         if config.optimizer == "polyak":
             # Polyak normalization: normalize grad direction, scale LR by loss
@@ -593,10 +604,12 @@ def train(
             lr_history.append(float(lr_schedule_fn(epoch)))
 
         # Track best parameters (use abs to handle losses that can go negative,
-        # e.g. Soft-DTW where the floor is negative due to softmin bias)
+        # e.g. Soft-DTW where the floor is negative due to softmin bias).
+        # Use params_at_loss (snapshot before this epoch's optax update) so the
+        # stored params reproduce `loss_val` when re-evaluated downstream.
         if abs(loss_val) < abs(best_loss):
             best_loss = loss_val
-            best_trainable_params = trainable_params
+            best_trainable_params = params_at_loss
             best_epoch = epoch
 
         # Periodic logging

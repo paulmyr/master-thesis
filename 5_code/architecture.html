@@ -213,12 +213,12 @@
     <tr>
       <td><strong>core</strong></td>
       <td><code>data.py</code><br><code>parameters.py</code><br><code>simulation.py</code></td>
-      <td>Domain primitives: trace loading &amp; preprocessing, AdEx parameter sets &amp; bounds, Jaxley/Brian2 simulation wrappers.</td>
+      <td>Domain primitives: trace loading &amp; preprocessing, AdEx parameter sets &amp; bounds, Jaxley/Brian2 simulation wrappers (<code>create_adex_cell</code>, <code>simulate_*</code>), with <code>v_init</code> to set the cell's initial voltage at creation.</td>
     </tr>
     <tr>
       <td><strong>loss</strong></td>
-      <td><code>guarino.py</code><br><code>mse.py</code><br><code>van_rossum.py</code></td>
-      <td>Differentiable loss functions. Guarino: 8-feature extraction via soft spike detection. MSE: direct voltage comparison. Van Rossum: exponential kernel convolution on spike trains + L2 distance. Shared utility: <code>inject_spike_peaks()</code> for differentiable spike peak injection.</td>
+      <td><code>guarino.py</code><br><code>mse.py</code><br><code>van_rossum.py</code><br><code>ttfs_rate.py</code></td>
+      <td>Differentiable loss functions. Guarino: 8-feature extraction via soft spike detection. MSE: direct voltage comparison. Van Rossum: exponential kernel convolution on spike trains + L2 distance. TTFS-rate: minimal 2-feature loss (time-to-first-spike + firing rate) reusing Guarino soft primitives. Shared utility: <code>inject_spike_peaks()</code> for differentiable spike peak injection.</td>
     </tr>
     <tr>
       <td><strong>training</strong></td>
@@ -250,12 +250,13 @@
         <span class="file">__init__.py</span>
         <span class="file">data.py</span>                <span class="comment">TraceData, load_trace(), detect_spikes()</span>
         <span class="file">parameters.py</span>          <span class="comment">DEFAULT_PARAMS, PARAM_BOUNDS, NAUD_PARAMETERS, AdExParams, ParamBounds</span>
-        <span class="file">simulation.py</span>          <span class="comment">SimulationResult, create_adex_cell(), simulate_*()</span>
+        <span class="file">simulation.py</span>          <span class="comment">SimulationResult, create_adex_cell(v_init=...), simulate_*()</span>
     <span class="dir">loss/</span>
         <span class="file">__init__.py</span>
         <span class="file">guarino.py</span>             <span class="comment">Feature-based loss (soft spike features), GuarinoFeatures</span>
         <span class="file">mse.py</span>                 <span class="comment">MSE voltage loss, MSELossConfig</span>
         <span class="file">van_rossum.py</span>          <span class="comment">Van Rossum spike train distance, VanRossumLossConfig</span>
+        <span class="file">ttfs_rate.py</span>           <span class="comment">Time-to-first-spike + firing-rate loss, TTFSRateLossConfig</span>
     <span class="dir">training/</span>
         <span class="file">__init__.py</span>
         <span class="file">trainer.py</span>             <span class="comment">TrainingConfig, TrainingResult, setup_trainable_cell(), train()</span>
@@ -263,7 +264,7 @@
         <span class="file">__init__.py</span>
         <span class="file">coincidence.py</span>         <span class="comment">CoincidenceResult, coincidence_factor() (&Gamma;)</span>
     <span class="file">plotting.py</span>                <span class="comment">Trace plots, training diagnostics, spike timing</span>
-    <span class="dir">tests/</span>                     <span class="comment">pytest suite (233 tests)</span>
+    <span class="dir">tests/</span>                     <span class="comment">pytest suite (315 collected)</span>
 <span class="dir">notebooks/</span>                     <span class="comment">Jupyter notebooks</span>
 </div>
 
@@ -429,7 +430,7 @@
     <div class="sep"></div>
     <p style="font-size:0.82rem; color:var(--muted);">
       <code>mse_loss(sim_v, exp_v)</code> &mdash; direct voltage MSE<br>
-      <code>make_mse_loss_fn(cell, data_stimuli, ...)</code> &mdash; closure for training
+      <code>make_mse_loss_fn(cell, data_stimuli, t_max, dt_ms, exp_voltage, stim_end_index, ...)</code> &mdash; closure that runs <code>jx.integrate</code> on the cell
     </p>
   </div>
 
@@ -447,6 +448,22 @@
       <code>van_rossum_distance(sim_spikes, exp_spikes, dt_ms, config)</code> &mdash; L2 on kernel-filtered spike trains<br>
       <code>spike_train_from_voltage(voltage, threshold_mv, dt_ms)</code> &mdash; rising-edge binary spike detector<br>
       <code>make_van_rossum_loss_fn(cell, data_stimuli, ...)</code> &mdash; closure for training
+    </p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">TTFSRateLossConfig <span class="badge">dataclass</span></div>
+    <dl>
+      <dt>weight_t_first</dt>       <dd>float (1.0) &mdash; weight for time-to-first-spike relative error</dd>
+      <dt>weight_firing_freq</dt>   <dd>float (1.0) &mdash; weight for firing-frequency relative error</dd>
+      <dt>missing_spike_penalty</dt><dd>float (3.0) &mdash; flat penalty when data fires but sim is silent</dd>
+      <dt>epsilon</dt>             <dd>float (1e-6) &mdash; relative-error denominator floor</dd>
+    </dl>
+    <div class="sep"></div>
+    <p style="font-size:0.82rem; color:var(--muted);">
+      Minimal 2-feature subset of Guarino: time-to-first-spike (soft-gated by has-spike validity) + firing rate. Reuses <code>soft_time_to_nth_spike</code>, <code>soft_firing_frequency</code>, <code>soft_spike_count</code>.<br>
+      <code>ttfs_rate_loss(sim_t_first, sim_freq, sim_has_spike, exp_t_first, exp_freq, exp_has_spike, config)</code> &mdash; weighted relative errors + penalty<br>
+      <code>make_ttfs_rate_loss_fn(cell, data_stimuli, ...)</code> &mdash; closure for training; targets can come from <code>extract_experimental_features</code>
     </p>
   </div>
 
@@ -551,7 +568,8 @@
     ├── make_*_loss_fn(cell, data_stimuli, ...)
     │     ├ guarino ──► make_guarino_loss_fn()   (soft features + relative error + penalties)
     │     ├ mse ──────► make_mse_loss_fn()       (direct voltage MSE)
-    │     └ van_rossum► make_van_rossum_loss_fn()(exponential kernel spike train distance)
+    │     ├ van_rossum► make_van_rossum_loss_fn()(exponential kernel spike train distance)
+    │     └ ttfs_rate► make_ttfs_rate_loss_fn() (time-to-first-spike + firing rate)
     │                                        ──►  loss_fn: params &rarr; scalar
     │
     ├── <strong>train(loss_fn, trainable_params, config)</strong>
@@ -629,18 +647,19 @@
 from ADoptEX.core.data import load_trace
 from ADoptEX.core.parameters import DEFAULT_PARAMS, PARAM_BOUNDS
 from ADoptEX.core.simulation import simulate_with_current_trace
-from ADoptEX.loss import make_guarino_loss_fn, make_mse_loss_fn, make_van_rossum_loss_fn
+from ADoptEX.loss import make_guarino_loss_fn, make_mse_loss_fn, make_van_rossum_loss_fn, make_ttfs_rate_loss_fn
 from ADoptEX.training import train, setup_trainable_cell, TrainingConfig
 from ADoptEX.evaluation import coincidence_factor
 
 <span style="color:var(--muted);"># Load experimental data</span>
 trace = load_trace("voltage_ch5.dat", "current_ch4.dat")
 
-<span style="color:var(--muted);"># Set up cell &amp; optimizer</span>
+<span style="color:var(--muted);"># Set up cell (start at the target's first voltage sample) &amp; loss</span>
 cell, data_stimuli, t_max, params = setup_trainable_cell(
-    DEFAULT_PARAMS, trace.current, trace.dt_ms
+    DEFAULT_PARAMS, trace.current, trace.dt_ms, v_init=trace.voltage[0]
 )
-loss_fn = make_guarino_loss_fn(cell, data_stimuli, t_max, trace, ...)
+loss_fn  = make_guarino_loss_fn(cell, data_stimuli, t_max, trace.dt_ms,
+                                exp_features, stim_duration_ms, stim_end_index)
 
 <span style="color:var(--muted);"># Train</span>
 config = TrainingConfig(optimizer="adam", learning_rate=0.1, n_epochs=500)
@@ -659,7 +678,8 @@ print(f"&Gamma; = {gamma.gamma:.3f}")</div>
   <ul>
     <li><strong>Notebook-first workflow</strong>: the library exposes importable building blocks (loss functions, training loop, data loading, evaluation). Orchestration, plotting, and experiment presets belong in notebooks.</li>
     <li><strong>TraceData vs SimulationResult</strong>: TraceData holds raw experimental recordings (with stimulation window metadata); SimulationResult holds Jaxley/Brian2 output (voltage + adaptation current <em>w</em> + spike trace).</li>
-    <li><strong>Loss functions are closures</strong>: <code>make_guarino_loss_fn()</code>, <code>make_mse_loss_fn()</code>, and <code>make_van_rossum_loss_fn()</code> capture the cell, data stimuli, and target data, returning a <code>params &rarr; scalar</code> function compatible with <code>jax.value_and_grad()</code>.</li>
+    <li><strong>Loss functions own their own <code>jx.integrate</code></strong>: <code>make_guarino_loss_fn()</code>, <code>make_mse_loss_fn()</code>, and <code>make_van_rossum_loss_fn()</code> take <code>(cell, data_stimuli, t_max, dt_ms, &lt;target data&gt;, ...)</code> and return a <code>params &rarr; scalar</code> closure compatible with <code>jax.value_and_grad()</code> that runs <code>jx.integrate</code> directly. No injected simulator or init-state callback.</li>
+    <li><strong>Initial voltage set at cell creation (<code>v_init</code>)</strong>: <code>create_adex_cell(..., v_init=...)</code> calls <code>cell.set("v", v_init)</code>; <code>setup_trainable_cell</code> and <code>simulate_with_current_trace</code> forward it. Pass <code>data.voltage[0]</code> so the simulation starts where the target trace starts (not Jaxley&rsquo;s default &minus;70 mV), avoiding the transient that biases <code>E_L</code> on subthreshold fits. The loss and optimizer never touch the initial state.</li>
     <li><strong>TrainingResult</strong> stores params in Jaxley&rsquo;s internal format (<code>[{"AdEx_g_L": Array}]</code>); <code>get_params_dict()</code> converts to <code>{"g_L": float}</code>.</li>
     <li><strong>Soft feature extraction</strong> uses temperature-scaled power sharpening and sigmoid-gated cumulative sum masks to make discrete spike operations differentiable.</li>
     <li><strong>Parameter clipping</strong> is applied after each gradient step using biophysically realistic bounds from <code>PARAM_BOUNDS</code>. Alternatively, <strong>sigmoid reparameterization</strong> (<code>use_param_transform=True</code>) maps parameters through a smooth bijection so the optimizer works in unconstrained space &mdash; gradients flow smoothly near boundaries.</li>

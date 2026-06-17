@@ -123,12 +123,12 @@ def make_mse_loss_fn(
             from ADoptEX.loss import inject_spike_peaks
 
             spikes = results[2].flatten()
-            min_len = min(len(voltage), len(spikes), stim_end_index + 100)
+            min_len = min(len(voltage), len(spikes), stim_end_index + 100) # what is going on here with the hardcoded + 100?
             voltage = voltage[:min_len]
             spikes = spikes[:min_len]
             voltage = inject_spike_peaks(voltage, spikes, loss_config.spike_peak_mv)
         else:
-            min_len = min(len(voltage), stim_end_index + 100)
+            min_len = min(len(voltage), stim_end_index + 100) # same as above
             voltage = voltage[:min_len]
 
         # Compute MSE loss

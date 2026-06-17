@@ -124,18 +124,7 @@ exp_features = extract_experimental_features(
 )
 
 loss_name = "Guarino"
-loss_fn = make_guarino_loss_fn(
-    cell=cell,
-    data_stimuli=data_stimuli,
-    t_max=t_max,
-    dt_ms=dt_ms,
-    exp_features=exp_features,
-    stim_duration_ms=t_max_ms,
-    stim_end_index=len(sim_init.voltage),
-    loss_config=GuarinoLossConfig(
-        weight_spike_count=0.0,
-    ),
-)
+loss_fn = make_guarino_loss_fn(cell=cell, data_stimuli=data_stimuli, t_max=t_max, dt_ms=dt_ms, exp_features=exp_features, stim_duration_ms=t_max_ms, stim_end_index=len(sim_init.voltage), loss_config=GuarinoLossConfig(weight_spike_count=0.0))
 
 
 # Build param name -> index mapping

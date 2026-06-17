@@ -109,15 +109,7 @@ target_voltage = jnp.array(sim_init.voltage)
 stim_end_index = len(sim_init.voltage)
 
 loss_name = 'MSE'
-loss_fn = make_mse_loss_fn(
-    cell=cell,
-    data_stimuli=data_stimuli,
-    t_max=t_max,
-    dt_ms=dt_ms,
-    exp_voltage=target_voltage,
-    stim_end_index=stim_end_index,
-    loss_config=MSELossConfig(normalize=False, clamp_threshold=None, spike_peak_mv=SPIKE_PEAK_MV),
-)
+loss_fn = make_mse_loss_fn(cell=cell, data_stimuli=data_stimuli, t_max=t_max, dt_ms=dt_ms, exp_voltage=target_voltage, stim_end_index=stim_end_index, loss_config=MSELossConfig(normalize=False, clamp_threshold=None, spike_peak_mv=SPIKE_PEAK_MV))
 
 # Build param name -> index mapping
 param_index = {}

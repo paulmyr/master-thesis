@@ -173,7 +173,7 @@ PARAM_BOUNDS: dict[str, ParamBounds] = {
     "delta_T": ParamBounds(1, 20.0),
     "v_reset": ParamBounds(-80.0, -45.0),
     "v_threshold": ParamBounds(-20.0, 30.0),
-    "tau_w": ParamBounds(20.0, 320.0),
+    "tau_w": ParamBounds(2.0, 320.0),
     "a": ParamBounds(-5.0, 5.0),
     "b": ParamBounds(0.0, 65.0),
 }

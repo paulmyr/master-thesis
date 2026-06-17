@@ -1,9 +1,16 @@
-\chapter{Discussion}\label{ch:discussion}\deadline{May 8th}
-
+\chapter{Discussion}\label{ch:discussion}
 % Discussion is the subjective evaluation, what did you come to, the comparison with work in Related works, for example,
 % considerations about the generality of the work (how dependent are the results on the choice of hyperparameters, for example)
 % and advantages of your choice of approach as well as disadvantages or limitations of this.
 
+The last chapter gave an overview over the hard facts.
+But where does that leave us?
+We want to argue now what that means for us going forward.
+\Cref{sec:discussion:jaxley} will argue what remains from this thesis, \cref{sec:discussion:diffadex} will hypothesis what
+contributed to the failure of our experiments.
+\Cref{sec:discussion:klos} reflects on alternative neuron models mentioned in \cref{sec:rw:sg-snn},
+that would alleviate us from biases introduced by surrogate gradients.
+Lastly, we want to discuss the limitations of this thesis in \cref{sec:discussion:limitations}.
 
 \section{Simplified Neurons in Jaxley}\label{sec:discussion:jaxley}
 
@@ -99,7 +106,10 @@ A direct diagnostic --- rerunning the benchmark with a \gls{LIF} channel substit
 The choice this leaves for downstream work depends on what the simplified-neuron pipeline is for.
 If exact recovery of spike times matters more than fidelity to a specific biophysical model, the \gls{QIF}-family with the Klos--Memmesheimer construction is a strictly better starting point than refining surrogates on \gls{AdEx}.
 If the biophysical specifics of \gls{AdEx} are required, the bottleneck is the loss landscape, not the optimiser:
-multi-trace constraints (\cref{sec:method:opt:stabilization:multi-trace}), curriculum schedules, hybrid objectives that combine Van Rossum's kernel smoothness with feature-based temporal credit assignment, and signal-processing-derived spike-train distances we have not explored are all more productive avenues than further work on the gradient-consumer side.
+multi-trace constraints (\cref{sec:method:opt:stabilization:multi-trace}), curriculum schedules, 
+hybrid objectives that combine Van Rossum's kernel smoothness with feature-based temporal credit assignment,
+and signal-processing-derived spike-train distances we have not explored are all more productive avenues
+than further work on the gradient-consumer side.
 \Cref{ch:conclusionsAndFutureWork} returns to these directions as concrete recommendations.
 
 \section{Limitations}\label{sec:discussion:limitations}

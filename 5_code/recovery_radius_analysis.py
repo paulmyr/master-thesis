@@ -19,12 +19,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 ROOT = Path(__file__).parent
-THESIS_FIGS = ROOT.parent / "2_thesis" / "figures"
+THESIS_FIGS = ROOT.parent / "5_code" / "figures"
 
 DELTAS = [0.02, 0.05, 0.1, 0.2, 0.4, 0.8]
 SCENARIOS = ["tonic", "adaptation", "initial_bursting"]
-METHODS = ["grad_mse", "grad_guarino", "grad_vanrossum",
-           "nm_guarino", "nm_guarino_hard"]
+# Canonical display order; the actual method set is filtered to what's present
+# in the benchmark CSV below (a rerun may run only a subset of these).
+METHOD_ORDER = ["grad_mse", "grad_guarino", "grad_vanrossum",
+                "nm_guarino", "nm_guarino_hard"]
 TRAINABLE = ["C_m", "g_L", "E_L", "v_T", "delta_T", "v_reset"]
 
 # --- Plot style: thesis-grade defaults --------------------------------------
@@ -114,6 +116,10 @@ bench_gammas = group_gammas(bench)
 floor_gammas = group_gammas(floor, default_method="init_floor")
 all_gammas = {**bench_gammas, **floor_gammas}
 
+# Restrict to methods actually present in the benchmark CSV, in canonical order.
+_present = {r["method"] for r in bench}
+METHODS = [m for m in METHOD_ORDER if m in _present]
+
 
 def success_rate(scenario, method, delta):
     gs = all_gammas[(scenario, method, delta)]
@@ -197,7 +203,7 @@ for ax, scenario in zip(axes, SCENARIOS):
             for n in TRAINABLE
         ]
         ax.bar(
-            x + (i - 2) * width, meds, width=width,
+            x + (i - (len(METHODS) - 1) / 2) * width, meds, width=width,
             color=COLORS[m], edgecolor="white", linewidth=0.4,
             label=LABELS[m] if ax is axes[0] else None,
         )

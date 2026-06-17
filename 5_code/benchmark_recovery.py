@@ -52,8 +52,8 @@ STIM_START_IDX = int(round(STIM_DELAY_MS / DT_MS))
 N_TIMESTEPS = int(round(T_MAX_MS / DT_MS))
 
 TRAINABLE = ["C_m", "g_L", "E_L", "v_T", "delta_T", "v_reset"]
-N_GRAD_STEPS = 25
-NM_MAXFEV = 50
+N_GRAD_STEPS = 500
+NM_MAXFEV = 1000
 
 
 # --- Experiment constants --------------------------------------------------
@@ -77,12 +77,12 @@ METHOD_CONFIGS: dict[str, dict] = {
     "grad_guarino": {
         "loss_type": "guarino",
         "surrogate_type": "superspike",
-        "surrogate_slope": 6,
-        "optimizer": "polyak",
-        "learning_rate": 0.001,
-        "use_param_transform": True,
-        "polyak_alpha": 0.8,
-        "polyak_beta": 0.6,
+        "surrogate_slope": 10,
+        "optimizer": "adam",
+        "learning_rate": 0.05,
+        "use_param_transform": False,
+        #"polyak_alpha": 0.8,
+        #"polyak_beta": 0.6,
         "temperature": 0.5,
         "beta": 10.0,
         "validity_beta": 10.0,
@@ -91,12 +91,12 @@ METHOD_CONFIGS: dict[str, dict] = {
     "grad_vanrossum": {
         "loss_type": "van_rossum",
         "surrogate_type": "superspike",
-        "surrogate_slope": 6,
-        "optimizer": "polyak",
-        "learning_rate": 0.001,
-        "use_param_transform": True,
-        "polyak_alpha": 0.8,
-        "polyak_beta": 0.6,
+        "surrogate_slope": 10,
+        "optimizer": "adam",
+        "learning_rate": 0.05,
+        "use_param_transform": False,
+        #"polyak_alpha": 0.8,
+        #"polyak_beta": 0.6,
         "loss_kwargs": {"tau_ms": 8.0, "weight_subthreshold": 0.3},
     },
     "nm_guarino": {

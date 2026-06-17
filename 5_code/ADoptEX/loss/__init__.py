@@ -5,6 +5,7 @@ This package provides:
 - mse: Mean squared error based losses (voltage trace, spike timing)
 - guarino: Feature-based loss from Guarino et al. (2025)
 - van_rossum: Van Rossum spike train distance (van Rossum, 2001)
+- ttfs_rate: Minimal time-to-first-spike + firing-rate feature loss
 - inject_spike_peaks: Differentiable spike peak injection for voltage traces
 """
 
@@ -14,6 +15,8 @@ from .guarino import (GuarinoFeatureExtractor, GuarinoFeatures,
                       GuarinoLossConfig, extract_experimental_features,
                       guarino_loss, make_guarino_loss_fn, relative_error)
 from .mse import MSELossConfig, make_mse_loss_fn, mse_loss
+from .ttfs_rate import (TTFSRateLossConfig, make_ttfs_rate_loss_fn,
+                        ttfs_rate_loss)
 from .van_rossum import (VanRossumLossConfig, make_van_rossum_loss_fn,
                          spike_train_from_voltage, van_rossum_distance)
 
@@ -51,4 +54,8 @@ __all__ = [
     "VanRossumLossConfig",
     "spike_train_from_voltage",
     "make_van_rossum_loss_fn",
+    # Time-to-first-spike + firing-rate loss
+    "TTFSRateLossConfig",
+    "ttfs_rate_loss",
+    "make_ttfs_rate_loss_fn",
 ]

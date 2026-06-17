@@ -4,10 +4,10 @@ import jax.numpy as jnp
 import pytest
 
 from ADoptEX.training.trainer import (TrainingConfig, TrainingResult,
-                                      _build_param_transform,
+                                      build_param_transform,
                                       _clip_trainable_params,
                                       _create_optimizer, _format_params,
-                                      _nudge_from_bounds,
+                                      nudge_from_bounds,
                                       _param_key_to_bounds_key, train)
 
 # =========================================================================
@@ -524,7 +524,7 @@ class TestParamKeyToBoundsKey:
 
 
 # =========================================================================
-# _nudge_from_bounds
+# nudge_from_bounds
 # =========================================================================
 
 
@@ -533,7 +533,7 @@ class TestNudgeFromBounds:
         from ADoptEX.core.parameters import PARAM_BOUNDS
 
         params = [{"AdEx_g_L": jnp.array([PARAM_BOUNDS["g_L"].min])}]
-        nudged = _nudge_from_bounds(params, PARAM_BOUNDS)
+        nudged = nudge_from_bounds(params, PARAM_BOUNDS)
         val = nudged[0]["AdEx_g_L"].item()
         assert val > PARAM_BOUNDS["g_L"].min
         assert val < PARAM_BOUNDS["g_L"].min + 0.01 * (
@@ -544,7 +544,7 @@ class TestNudgeFromBounds:
         from ADoptEX.core.parameters import PARAM_BOUNDS
 
         params = [{"AdEx_g_L": jnp.array([PARAM_BOUNDS["g_L"].max])}]
-        nudged = _nudge_from_bounds(params, PARAM_BOUNDS)
+        nudged = nudge_from_bounds(params, PARAM_BOUNDS)
         val = nudged[0]["AdEx_g_L"].item()
         assert val < PARAM_BOUNDS["g_L"].max
 
@@ -553,20 +553,20 @@ class TestNudgeFromBounds:
 
         mid = (PARAM_BOUNDS["g_L"].min + PARAM_BOUNDS["g_L"].max) / 2
         params = [{"AdEx_g_L": jnp.array([mid])}]
-        nudged = _nudge_from_bounds(params, PARAM_BOUNDS)
+        nudged = nudge_from_bounds(params, PARAM_BOUNDS)
         assert nudged[0]["AdEx_g_L"].item() == pytest.approx(mid)
 
     def test_handles_capacitance_key(self):
         from ADoptEX.core.parameters import PARAM_BOUNDS
 
         params = [{"capacitance": jnp.array([PARAM_BOUNDS["C_m"].min])}]
-        nudged = _nudge_from_bounds(params, PARAM_BOUNDS)
+        nudged = nudge_from_bounds(params, PARAM_BOUNDS)
         val = nudged[0]["capacitance"].item()
         assert val > PARAM_BOUNDS["C_m"].min
 
 
 # =========================================================================
-# _build_param_transform
+# build_param_transform
 # =========================================================================
 
 
@@ -575,14 +575,14 @@ class TestBuildParamTransform:
         from ADoptEX.core.parameters import PARAM_BOUNDS
 
         params = [{"AdEx_g_L": jnp.array([10.0])}, {"AdEx_E_L": jnp.array([-65.0])}]
-        transform = _build_param_transform(params, PARAM_BOUNDS)
+        transform = build_param_transform(params, PARAM_BOUNDS)
         assert transform is not None
 
     def test_roundtrip_forward_inverse(self):
         from ADoptEX.core.parameters import PARAM_BOUNDS
 
         params = [{"AdEx_g_L": jnp.array([10.0])}, {"AdEx_E_L": jnp.array([-65.0])}]
-        transform = _build_param_transform(params, PARAM_BOUNDS)
+        transform = build_param_transform(params, PARAM_BOUNDS)
 
         unconstrained = transform.inverse(params)
         reconstructed = transform.forward(unconstrained)
@@ -596,7 +596,7 @@ class TestBuildParamTransform:
         from ADoptEX.core.parameters import PARAM_BOUNDS
 
         params = [{"AdEx_g_L": jnp.array([10.0])}, {"AdEx_a": jnp.array([2.0])}]
-        transform = _build_param_transform(params, PARAM_BOUNDS)
+        transform = build_param_transform(params, PARAM_BOUNDS)
 
         # Extreme unconstrained values should still map inside bounds
         extreme = [{"AdEx_g_L": jnp.array([100.0])}, {"AdEx_a": jnp.array([-100.0])}]
@@ -611,7 +611,7 @@ class TestBuildParamTransform:
 
         params = [{"AdEx_unknown_xyz": jnp.array([1.0])}]
         with pytest.raises(ValueError, match="No bounds for parameter"):
-            _build_param_transform(params, PARAM_BOUNDS)
+            build_param_transform(params, PARAM_BOUNDS)
 
 
 # =========================================================================
@@ -692,6 +692,24 @@ class TestSigmoidReparameterization:
         assert result.best_epoch >= 0
         # Best loss should be <= final loss
         assert result.best_loss <= result.final_loss + 1e-6
+
+    def test_return_best_params_reproduce_best_loss(
+        self, simple_params, quadratic_loss_fn
+    ):
+        # Regression: best_trainable_params used to be captured AFTER the optax
+        # update for the best epoch, so re-evaluating loss on the returned
+        # params gave a different number than the reported best_loss.
+        config = TrainingConfig(
+            n_epochs=30,
+            learning_rate=0.5,
+            use_param_transform=False,
+            clip_to_bounds=False,
+            return_best=True,
+            verbose=False,
+        )
+        result = train(quadratic_loss_fn, simple_params, config)
+        re_evaluated = float(quadratic_loss_fn(result.trainable_params))
+        assert re_evaluated == pytest.approx(result.best_loss, rel=1e-5, abs=1e-6)
 
     def test_polyak_with_transform(self, simple_params, quadratic_loss_fn):
         """Polyak + sigmoid transform should be compatible and converge."""

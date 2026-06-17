@@ -88,6 +88,7 @@ def create_adex_cell(
     trainable: bool = False,
     trainable_params: list[str] | None = None,
     record: bool = True,
+    v_init: float | None = None,
 ) -> jx.Cell:
     """
     Create a Jaxley cell with AdEx channel.
@@ -159,8 +160,12 @@ def create_adex_cell(
     cell.set(f"{prefix}_a", params["a"])
     cell.set(f"{prefix}_b", params["b"])
 
-    # Set initial voltage
-    cell.set("v", params["E_L"])
+    # Set the initial membrane voltage. Pass the target trace's first sample
+    # (e.g. data.voltage[0]) so the simulation starts where the data starts,
+    # instead of Jaxley's default -70 mV. This avoids a spurious initial
+    # transient that otherwise biases E_L when fitting subthreshold traces.
+    if v_init is not None:
+        cell.set("v", v_init)
 
     # Setup recording
     if record:
@@ -201,6 +206,7 @@ def simulate_jaxley(
     use_surrogate: bool = False,
     surrogate_type: SurrogateType = "sigmoid",
     surrogate_slope: float = 25.0,
+    v_init: float | None = None,
 ) -> SimulationResult:
     """
     Run AdEx simulation using Jaxley.
@@ -217,6 +223,8 @@ def simulate_jaxley(
         use_surrogate: If True, use differentiable AdExSurrogate
         surrogate_type: Type of surrogate gradient
         surrogate_slope: Steepness of surrogate gradient
+        v_init: Initial membrane voltage (mV). Defaults to Jaxley's -70 mV; pass a
+            value (e.g. the resting potential) to start the simulation there.
 
     Returns:
         SimulationResult with time, voltage, w, spikes, and spike_times
@@ -236,6 +244,7 @@ def simulate_jaxley(
         surrogate_slope=surrogate_slope,
         trainable=False,
         record=True,
+        v_init=v_init,
     )
 
     # Convert pA → nA (Jaxley's point-process unit).
@@ -387,6 +396,7 @@ def simulate_with_current_trace(
     use_surrogate: bool = True,
     surrogate_type: SurrogateType = "sigmoid",
     surrogate_slope: float = 25.0,
+    v_init: float | None = None,
 ) -> SimulationResult:
     """
     Run AdEx simulation using an arbitrary current trace.
@@ -401,6 +411,9 @@ def simulate_with_current_trace(
         use_surrogate: If True, use differentiable AdExSurrogate
         surrogate_type: Type of surrogate gradient
         surrogate_slope: Steepness of surrogate gradient
+        v_init: Initial membrane voltage (mV). Pass the target trace's first
+            sample (e.g. data.voltage[0]) so the simulation starts where the data
+            starts instead of the default -70 mV.
 
     Returns:
         SimulationResult with time, voltage, w, spikes, and spike_times
@@ -413,6 +426,7 @@ def simulate_with_current_trace(
         surrogate_slope=surrogate_slope,
         trainable=False,
         record=True,
+        v_init=v_init,
     )
 
     # Convert pA → nA (see POINT_NEURON_RADIUS_UM comment for unit derivation)
