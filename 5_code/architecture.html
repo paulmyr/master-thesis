@@ -243,7 +243,7 @@
 <h2>2. Directory Structure</h2>
 
 <div class="tree"><span class="dir">5_code/</span>
-<span class="file">pyproject.toml</span>                 <span class="comment">package metadata + pytest config</span>
+<span class="file">pyproject.toml</span>                 <span class="comment">package metadata</span>
 <span class="dir">ADoptEX/</span>                       <span class="comment">installable Python package</span>
     <span class="file">__init__.py</span>
     <span class="dir">core/</span>
@@ -264,7 +264,6 @@
         <span class="file">__init__.py</span>
         <span class="file">coincidence.py</span>         <span class="comment">CoincidenceResult, coincidence_factor() (&Gamma;)</span>
     <span class="file">plotting.py</span>                <span class="comment">Trace plots, training diagnostics, spike timing</span>
-    <span class="dir">tests/</span>                     <span class="comment">pytest suite (315 collected)</span>
 <span class="dir">notebooks/</span>                     <span class="comment">Jupyter notebooks</span>
 </div>
 
@@ -538,11 +537,11 @@
     <ul>
       <li><code>trace_plot(trace)</code>, <code>trace_stim_window_plot(trace)</code> &mdash; raw trace visualization</li>
       <li><code>traces_overlay_plot(traces, labels)</code> &mdash; overlay multiple traces</li>
-      <li><code>fit_comparison_plot(trace, sim)</code> &mdash; experimental vs simulated</li>
+      <li><code>fit_comparison_plot(trace, sim, spike_peak_mv=35.0)</code> &mdash; experimental vs simulated (simulated spike peaks reinstated; <code>None</code> disables)</li>
       <li><code>training_history_plot(result)</code> &mdash; loss curve + gradient norms + LR schedule</li>
       <li><code>training_comparison_plot(results, labels)</code> &mdash; compare multiple training runs</li>
       <li><code>parameter_comparison_plot(result, bounds)</code> &mdash; normalized parameter bar chart</li>
-      <li><code>fit_before_after_plot(trace, sim_init, sim_trained, coincidence, labels)</code> &mdash; before/after with raster (supports multiple trained sims)</li>
+      <li><code>fit_before_after_plot(trace, sim_init, sim_trained, coincidence, labels, spike_peak_mv=35.0)</code> &mdash; before/after with raster (supports multiple trained sims; simulated spike peaks reinstated, <code>None</code> disables)</li>
       <li><code>spike_timing_plot(trace, sim, cf)</code> &mdash; coincidence windows + timing error stems</li>
     </ul>
   </div>

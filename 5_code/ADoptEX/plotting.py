@@ -20,6 +20,37 @@ if TYPE_CHECKING:
     from ADoptEX.training.trainer import TrainingResult
 
 
+def _sim_voltage_for_plot(
+    sim: SimulationResult, spike_peak_mv: float | None
+) -> np.ndarray:
+    """Return the simulated voltage to plot, with spike peaks reinstated.
+
+    The AdEx reset mechanism clips the membrane potential at spike times, so the
+    raw ``sim.voltage`` has no spike peaks. For display we reinstate them by
+    injecting ``spike_peak_mv`` at the (binary) spike-indicator samples via the
+    shared ``inject_spike_peaks`` utility. Passing ``spike_peak_mv=None`` returns
+    the raw voltage unchanged.
+
+    Args:
+        sim: SimulationResult holding ``voltage`` and the aligned ``spikes`` trace.
+        spike_peak_mv: Peak voltage (mV) to inject at spike times, or None to
+            leave the trace untouched.
+
+    Returns:
+        Voltage array (same length as ``sim.voltage``) for plotting.
+    """
+    if spike_peak_mv is None:
+        return sim.voltage
+    import jax.numpy as jnp
+
+    from ADoptEX.loss import inject_spike_peaks
+
+    injected = inject_spike_peaks(
+        jnp.asarray(sim.voltage), jnp.asarray(sim.spikes), spike_peak_mv
+    )
+    return np.asarray(injected)
+
+
 def trace_plot(
     trace: TraceData,
     show_spikes: bool = True,
@@ -315,6 +346,7 @@ def fit_comparison_plot(
     sim: SimulationResult,
     stim_window_only: bool = True,
     padding_ms: float = 50.0,
+    spike_peak_mv: float | None = 35.0,
     figsize: tuple[float, float] = (12, 7),
 ) -> Figure:
     """Plot experimental trace vs simulation result after fitting.
@@ -324,6 +356,9 @@ def fit_comparison_plot(
         sim: SimulationResult from fitted model
         stim_window_only: Zoom to stimulation window
         padding_ms: Padding around stim window
+        spike_peak_mv: Peak voltage (mV) injected at the simulated spike times so
+            the AdEx-reset-clipped trace shows spike peaks. Set to None to plot the
+            raw simulated voltage. The experimental trace is left untouched.
         figsize: Figure size
 
     Returns:
@@ -343,7 +378,7 @@ def fit_comparison_plot(
     )
     ax_v.plot(
         sim.time,
-        sim.voltage,
+        _sim_voltage_for_plot(sim, spike_peak_mv),
         color="tab:blue",
         linewidth=0.6,
         label=f"Simulated ({sim.n_spikes} spikes)",
@@ -660,6 +695,7 @@ def fit_before_after_plot(
     labels: Sequence[str] | None = None,
     stim_window_only: bool = True,
     padding_ms: float = 20.0,
+    spike_peak_mv: float | None = 35.0,
     figsize: tuple[float, float] = (12, 8),
 ) -> Figure:
     """Before/after comparison of experimental trace vs initial and trained simulations.
@@ -680,6 +716,10 @@ def fit_before_after_plot(
             Defaults to "Trained" for single, "Stage 1", "Stage 2", ... for multiple.
         stim_window_only: Zoom to stimulation window
         padding_ms: Padding around stim window
+        spike_peak_mv: Peak voltage (mV) injected at the simulated spike times so
+            the AdEx-reset-clipped traces show spike peaks. Applies to both the
+            initial and trained simulations. Set to None to plot the raw simulated
+            voltage. The experimental trace is left untouched.
         figsize: Figure size
 
     Returns:
@@ -748,7 +788,7 @@ def fit_before_after_plot(
     )
     ax_before.plot(
         sim_initial.time[:n_before],
-        sim_initial.voltage[:n_before],
+        _sim_voltage_for_plot(sim_initial, spike_peak_mv)[:n_before],
         color="tab:orange",
         linewidth=0.6,
         label=f"Initial ({sim_initial.n_spikes})",
@@ -779,7 +819,7 @@ def fit_before_after_plot(
             trained_label += f" | Γ={cf.gamma:.3f}"
         ax.plot(
             sim.time[:ni],
-            sim.voltage[:ni],
+            _sim_voltage_for_plot(sim, spike_peak_mv)[:ni],
             color=color,
             linewidth=0.6,
             label=trained_label,

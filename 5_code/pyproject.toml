@@ -14,34 +14,5 @@ dependencies = [
     "numpy",
 ]
 
-[project.optional-dependencies]
-test = [
-    "pytest",
-    "pytest-clarity",
-]
-
 [tool.setuptools.packages.find]
 include = ["ADoptEX*"]
-exclude = ["ADoptEX.tests*"]
-
-[tool.pytest.ini_options]
-testpaths = ["ADoptEX/tests"]
-markers = [
-    "slow: Tests requiring Jaxley/Brian2 simulation",
-    "jaxley: Tests requiring Jaxley framework",
-]
-addopts = [
-    "-vv",
-    "--tb=short",
-    "--strict-markers",
-]
-filterwarnings = [
-    "ignore::DeprecationWarning:jax",
-    "ignore::DeprecationWarning:jaxlib",
-]
-log_cli = false
-log_cli_level = "WARNING"
-
-[tool.pytest-clarity]
-max-column-width = 120
-force-enable-color = true
