@@ -217,8 +217,8 @@
     </tr>
     <tr>
       <td><strong>loss</strong></td>
-      <td><code>guarino.py</code><br><code>mse.py</code><br><code>van_rossum.py</code><br><code>ttfs_rate.py</code></td>
-      <td>Differentiable loss functions. Guarino: 8-feature extraction via soft spike detection. MSE: direct voltage comparison. Van Rossum: exponential kernel convolution on spike trains + L2 distance. TTFS-rate: minimal 2-feature loss (time-to-first-spike + firing rate) reusing Guarino soft primitives. Shared utility: <code>inject_spike_peaks()</code> for differentiable spike peak injection.</td>
+      <td><code>guarino.py</code><br><code>mse.py</code><br><code>van_rossum.py</code><br><code>ttfs_rate.py</code><br><code>soft_dtw.py</code></td>
+      <td>Differentiable loss functions. Guarino: 8-feature extraction via soft spike detection. MSE: direct voltage comparison. Van Rossum: exponential kernel convolution on spike trains + L2 distance. TTFS-rate: minimal 2-feature loss (time-to-first-spike + firing rate) reusing Guarino soft primitives. Soft-DTW: differentiable Dynamic Time Warping on a sliding-window-max voltage envelope (Cuturi &amp; Blondel 2017), tolerant of small temporal misalignments. Shared utility: <code>inject_spike_peaks()</code> for differentiable spike peak injection.</td>
     </tr>
     <tr>
       <td><strong>training</strong></td>
@@ -257,6 +257,7 @@
         <span class="file">mse.py</span>                 <span class="comment">MSE voltage loss, MSELossConfig</span>
         <span class="file">van_rossum.py</span>          <span class="comment">Van Rossum spike train distance, VanRossumLossConfig</span>
         <span class="file">ttfs_rate.py</span>           <span class="comment">Time-to-first-spike + firing-rate loss, TTFSRateLossConfig</span>
+        <span class="file">soft_dtw.py</span>             <span class="comment">Soft-DTW voltage-envelope distance, SoftDTWLossConfig</span>
     <span class="dir">training/</span>
         <span class="file">__init__.py</span>
         <span class="file">trainer.py</span>             <span class="comment">TrainingConfig, TrainingResult, setup_trainable_cell(), train()</span>
@@ -466,6 +467,24 @@
     </p>
   </div>
 
+  <div class="card">
+    <div class="card-title">SoftDTWLossConfig <span class="badge">dataclass</span></div>
+    <dl>
+      <dt>window_size</dt>  <dd>int (50) &mdash; sliding-window length (samples) for the max reduction</dd>
+      <dt>stride</dt>       <dd>int (30) &mdash; sliding-window stride (samples)</dd>
+      <dt>gamma</dt>        <dd>float (0.5) &mdash; soft-min temperature in the DTW recursion</dd>
+      <dt>lambda_temp</dt>  <dd>float (10.0) &mdash; weight of the normalized temporal penalty vs the [0,1] amplitude term</dd>
+      <dt>spike_peak_mv</dt><dd>float|None (35.0) &mdash; peak injected at spike timesteps before reduction; None disables</dd>
+      <dt>use_divergence</dt><dd>bool (True) &mdash; return Cuturi &amp; Blondel divergence (&ge; 0, = 0 at a perfect fit)</dd>
+    </dl>
+    <div class="sep"></div>
+    <p style="font-size:0.82rem; color:var(--muted);">
+      Differentiable Dynamic Time Warping on a sliding-window-max voltage envelope; cost <code>|x_i - y_j| + lambda_temp * |i - j| / (max(n,m)-1)</code> with both terms in [0,1].<br>
+      <code>soft_dtw_from_cost(C, gamma)</code> &mdash; soft-DTW from a cost matrix; <code>sliding_window_max(v, window, stride)</code> &mdash; differentiable envelope<br>
+      <code>make_soft_dtw_loss_fn(cell, data_stimuli, ..., loss_config)</code> &mdash; closure for training; injects spike peaks via <code>inject_spike_peaks</code>
+    </p>
+  </div>
+
 </div>
 
 <!-- ---- Training & Evaluation layer ---- -->
@@ -568,7 +587,8 @@
     │     ├ guarino ──► make_guarino_loss_fn()   (soft features + relative error + penalties)
     │     ├ mse ──────► make_mse_loss_fn()       (direct voltage MSE)
     │     ├ van_rossum► make_van_rossum_loss_fn()(exponential kernel spike train distance)
-    │     └ ttfs_rate► make_ttfs_rate_loss_fn() (time-to-first-spike + firing rate)
+    │     ├ ttfs_rate► make_ttfs_rate_loss_fn() (time-to-first-spike + firing rate)
+    │     └ soft_dtw ► make_soft_dtw_loss_fn()  (soft-DTW voltage-envelope distance)
     │                                        ──►  loss_fn: params &rarr; scalar
     │
     ├── <strong>train(loss_fn, trainable_params, config)</strong>
@@ -646,7 +666,7 @@
 from ADoptEX.core.data import load_trace
 from ADoptEX.core.parameters import DEFAULT_PARAMS, PARAM_BOUNDS
 from ADoptEX.core.simulation import simulate_with_current_trace
-from ADoptEX.loss import make_guarino_loss_fn, make_mse_loss_fn, make_van_rossum_loss_fn, make_ttfs_rate_loss_fn
+from ADoptEX.loss import make_guarino_loss_fn, make_mse_loss_fn, make_van_rossum_loss_fn, make_ttfs_rate_loss_fn, make_soft_dtw_loss_fn
 from ADoptEX.training import train, setup_trainable_cell, TrainingConfig
 from ADoptEX.evaluation import coincidence_factor
 
