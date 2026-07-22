@@ -1,11 +1,16 @@
-"""Tune the gradient hyperparameters for the ttfs_rate loss in `benchmark_spiking.py`.
+"""Tune the gradient hyperparameters for each loss in `benchmark_spiking.py`.
 
 The headline question of the benchmark is *how low can each optimizer drive the
-ttfs_rate loss?*, so gradient descent needs a well-chosen learning rate / surrogate
-slope / parameter-transform regime to compete fairly with Nelder-Mead. This script
-sweeps a short grid at the *same* MAX_ITERS budget the main benchmark uses, scores
-each config by the achieved loss (min over the optimization curve, lower = better),
-and prints a ready-to-paste GRAD_HP line.
+loss?*, so gradient descent needs a well-chosen learning rate / surrogate slope /
+parameter-transform regime to compete fairly with Nelder-Mead. This script sweeps a
+grid at the *same* MAX_ITERS budget (and the *same* cosine LR decay) the main
+benchmark uses, scores each config by the best-so-far achieved loss (lower = better),
+and prints a ready-to-paste GRAD_HP block.
+
+Cosine LR decay (added to `run_grad`) prevents Adam from finding the basin then
+overshooting back out, so best-so-far is now a genuine *held* minimum rather than a
+transient dip. We still report the final-vs-best gap as a diagnostic: a large gap
+means the config still overshoots and the lr should come down.
 
 Reuses benchmark_spiking for scenarios, cell/loss build, the gradient/NM runners.
 Run with `python benchmark_spiking_grad_tuning.py`.
@@ -17,13 +22,23 @@ import benchmark_spiking as B
 
 # --- Tuning config ---------------------------------------------------------
 
+# Mirror the benchmark's actual DELTAS so the tuned HP generalize to the full
+# run (a harder/larger-delta-only subset over-selects aggressive lr that then
+# overshoots the easy small-delta scenarios).
 SUBSET_BASES = ["tonic"]
-SUBSET_DELTAS = [0.2]
-SUBSET_DIRS = 3
+SUBSET_DELTAS = [0.05, 0.1, 0.2]
+SUBSET_DIRS = 5
 
-# Sweep grid (lr, surrogate_slope, transform) for the ttfs_rate loss.
+# Sweep grid (lr, surrogate_slope, transform) per loss. Slope emphasis 5-15
+# (Gygax & Zenke 2025: slope 25 gives a ~0.4 mV window); lr spans low-to-moderate
+# since cosine decay means the *initial* lr sets the early step size.
+_LR = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5]
+_SLOPE = [5.0, 7.5, 10.0, 15.0]
 GRID = {
-    "ttfs_rate": dict(lr=[0.2, 0.5, 1.0], slope=[5.0, 10.0], transform=[False, True]),
+    "ttfs_rate":  dict(lr=_LR, slope=_SLOPE, transform=[True]),
+    "van_rossum": dict(lr=_LR, slope=_SLOPE, transform=[True]),
+    "guarino":    dict(lr=_LR, slope=_SLOPE, transform=[True]),
+    "soft_dtw":   dict(lr=_LR, slope=_SLOPE, transform=[True]),
 }
 
 
@@ -53,20 +68,23 @@ def main():
               f"budget = {B.MAX_ITERS})")
         print("=" * 72)
         print(f"{'lr':>8}{'slope':>8}{'transform':>11}{'med loss':>12}"
-              f"{'win% vs NM':>12}")
+              f"{'med gap':>10}{'win% vs NM':>12}")
         results = []
         for lr in g["lr"]:
             for slope in g["slope"]:
                 for tf in g["transform"]:
                     hp = dict(lr=lr, surrogate_slope=slope, transform=tf)
-                    losses = [min(B.run_grad(sc["init"], sc["trace"], loss_name, hp)[1])
+                    curves = [B.run_grad(sc["init"], sc["trace"], loss_name, hp)[1]
                               for sc in scenarios]
+                    losses = [min(c) for c in curves]            # best-so-far achieved
+                    gaps = [c[-1] - min(c) for c in curves]      # overshoot diagnostic
                     med = _med(losses)
+                    gap = _med(gaps)
                     win = float(np.mean([gl < nl
                                          for gl, nl in zip(losses, nm_losses)]))
                     results.append((med, hp))
                     print(f"{lr:>8}{slope:>8}{str(tf):>11}{med:>12.4g}"
-                          f"{100 * win:>11.0f}%")
+                          f"{gap:>10.3g}{100 * win:>11.0f}%")
         results.sort(key=lambda r: r[0])  # lowest median achieved loss first
         best_hp[loss_name] = results[0][1]
         print(f"  BEST: {results[0][1]}  (med loss = {results[0][0]:.4g})\n")

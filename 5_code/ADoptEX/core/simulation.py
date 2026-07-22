@@ -89,6 +89,7 @@ def create_adex_cell(
     trainable_params: list[str] | None = None,
     record: bool = True,
     v_init: float | None = None,
+    bptt_grad_clip: float | None = None,
 ) -> jx.Cell:
     """
     Create a Jaxley cell with AdEx channel.
@@ -140,7 +141,9 @@ def create_adex_cell(
     if use_surrogate:
         cell.insert(
             AdExSurrogate(
-                surrogate_type=surrogate_type, surrogate_slope=surrogate_slope
+                surrogate_type=surrogate_type,
+                surrogate_slope=surrogate_slope,
+                bptt_grad_clip=bptt_grad_clip,
             )
         )
         prefix = "AdEx"  # AdExSurrogate uses same prefix

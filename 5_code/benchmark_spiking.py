@@ -15,8 +15,21 @@ identifiable spike-shaping params. A later stage will fit the adaptation params
 Because these params act only through spike timing, MSE is the wrong loss (it
 collapses to non-spiking solutions). We use a single spike-aware loss, ttfs_rate
 (time-to-first-spike + firing rate), and ask the simple question: *how low can each
-optimizer drive that loss?* — grad (Adam) vs Nelder-Mead on an *equal* per-run
-budget (Adam epochs == NM function evaluations).
+optimizer drive that loss?* — grad (Adam, with cosine LR decay) vs Nelder-Mead on
+an *equal* per-run budget (Adam epochs == NM function evaluations).
+
+Notes on the gradient optimizer (two distinct failure modes, both fixed here):
+  1. Overshoot: Adam's step is ~lr regardless of the (small) gradient magnitude,
+     so on this staircase loss a constant lr finds the basin then wanders back
+     out. Fixed with cosine LR decay (lr->0 over the budget) so grad settles.
+  2. Exploding backprop-through-time: the AdEx exponential spike mechanism makes
+     the recurrent adjoint compound across every spike, overflowing to inf/NaN.
+     The NaN tripped train()'s guard and killed ~80% of grad runs at 2-3 iters.
+     Fixed two ways: (a) STIM_PA=250 pA keeps firing realistic (~6 spikes) so the
+     adjoint has fewer terms to compound, and (b) clipped BPTT (BPTT_GRAD_CLIP)
+     caps the per-timestep cotangent so gradients stay finite at any firing rate.
+The autodiff gradient itself is a good descent direction (cos ~0.99 with a
+finite-difference secant; a line search along -grad slashes the loss).
 
 Design (subthreshold-style perturbation):
   * Single base (tonic, with a=b=0) × DELTAS × N_DIRS directions. For each scenario
@@ -26,8 +39,9 @@ Design (subthreshold-style perturbation):
   * A spiking guard rejects any GT perturbation that yields < 2 spikes (so first
     ISI / firing rate / first-spike time are well defined).
 
-Headline metric: the achieved ttfs_rate loss (init_loss vs final = min over the
-optimization curve). Secondary diagnostics from a clean non-surrogate re-sim at the
+Headline metric: the achieved ttfs_rate loss (init_loss vs final = best-so-far over
+the optimization curve; with LR decay the settled final ~= best). Secondary
+diagnostics from a clean non-surrogate re-sim at the
 recovered params: coincidence factor Γ, first-spike error, firing-rate error, and
 normalized per-parameter recovery error.
 
@@ -72,15 +86,23 @@ from ADoptEX.training.trainer import (TrainingConfig, setup_trainable_cell,
 
 DT_MS = 0.025
 SPIKE_PEAK_MV = 10.0  # peak injected into target voltage; soft-DTW must match
-SPK_DELAY, SPK_DUR, SPK_T_MAX = 20.0, 280.0, 300.0  # step uses base["I"] (500 pA)
+SPK_DELAY, SPK_DUR, SPK_T_MAX = 20.0, 180.0, 200.0
+# Stimulus amplitude for the synthetic traces. Deliberately *below* the NAUD
+# tonic base I (500 pA): 500 pA fires ~24 spikes (155 Hz), which is both
+# unphysiological and makes the surrogate-gradient backward explode (the
+# recurrent adjoint compounds across every spike -> inf/NaN). 250 pA fires
+# ~6 spikes, a realistic rate where gradients stay finite. Going much lower
+# starves the >=2-spike spiking guard.
+STIM_PA = 250.0
 
 # --- Experiment constants --------------------------------------------------
 
-DELTAS = [0.1, 0.2, 0.4]
+DELTAS = [0.05, 0.1, 0.2]
 N_DIRS = 20
 SEED = 42
-BASES = ["tonic"]                      # a=b=0 collapses the other NAUD bases
-LOSSES = ["ttfs_rate"]                 # stage 1: spike-initiation only
+BASES = ["tonic"] # a=b=0 collapses the other NAUD bases
+LOSSES = ["ttfs_rate", "van_rossum", "guarino", "soft_dtw"] # stage 1: spike-initiation only
+#LOSSES = ["soft_dtw"]                 # stage 1: spike-initiation only
 OPTIMIZERS = ["grad", "nm"]
 
 OUT_CSV = Path(__file__).parent / "results_spiking.csv"
@@ -100,16 +122,24 @@ MIN_GT_SPIKES = 2        # spiking guard: GT must fire at least this many spikes
 MAX_RESAMPLE = 200       # guard attempts per scenario slot
 
 # Equal like-for-like budget: Adam epochs == NM function evaluations.
-MAX_ITERS = 200
+MAX_ITERS = 25
 
-# Per-loss gradient hyperparameters. Seeded from benchmark_recovery.py's tuned
-# per-stage values; refine with benchmark_spiking_grad_tuning.py and paste back.
+# Clipped backprop-through-time: per-timestep cap on the membrane-potential
+# cotangent in the AdEx backward pass. Without it the recurrent adjoint explodes
+# across spikes -> NaN gradients -> train() early-exits (most grad runs died at
+# 2-3 iters). With it the gradient stays finite and grad uses its full budget.
+# Identity in the forward pass, so NM (forward-only) is unaffected. clip in
+# [1, 100] all work; 10 balances stability vs. signal.
+BPTT_GRAD_CLIP = 10.0
+
+# Per-loss gradient hyperparameters. Tuned by benchmark_spiking_grad_tuning.py
+# with cosine LR decay active (best-so-far achieved loss over a 9-scenario subset).
 # optimizer=adam and surrogate_type=superspike are fixed across losses.
 GRAD_HP = {
-    "guarino":    dict(lr=0.005, surrogate_slope=5.0, transform=True),
-    "van_rossum": dict(lr=0.05, surrogate_slope=10.0, transform=True),
-    "soft_dtw":   dict(lr=0.01, surrogate_slope=10.0, transform=True),
-    "ttfs_rate":  dict(lr=0.5, surrogate_slope=10.0, transform=False),
+    'ttfs_rate'   : dict(lr=0.1, surrogate_slope=10.0, transform=True),
+    'van_rossum'  : dict(lr=0.2, surrogate_slope=5.0, transform=True),
+    'guarino'     : dict(lr=0.2, surrogate_slope=7.5, transform=True),
+    'soft_dtw'    : dict(lr=0.2, surrogate_slope=5.0, transform=True),
 }
 
 CSV_FIELDS = [
@@ -123,7 +153,7 @@ CSV_FIELDS = [
   + [f"{n}_gt" for n in TRAINABLE] + [f"{n}_fit" for n in TRAINABLE]
 
 CURVE_FIELDS = ["scenario_idx", "base", "loss", "optimizer", "delta",
-                "direction_idx", "iter", "loss"]
+                "direction_idx", "iter", "loss_value"]
 
 
 @contextlib.contextmanager
@@ -207,7 +237,7 @@ def generate_scenarios():
                     raise RuntimeError(f"spiking guard exhausted: {base} δ={delta}")
                 direction = sample_direction(rng, len(PERTURB_PARAMS))
                 gt, n_clipped = make_gt(base_params, direction, delta)
-                trace = make_synthetic_trace(base_params["I"], SPK_T_MAX, SPK_DELAY,
+                trace = make_synthetic_trace(STIM_PA, SPK_T_MAX, SPK_DELAY,
                                              SPK_DUR, gt)
                 if len(trace.spike_times) < MIN_GT_SPIKES:
                     continue  # GT (near-)silent -> reject, resample
@@ -235,7 +265,8 @@ def build_loss(loss_name, cell, data_stimuli, t_max, trace):
         return make_van_rossum_loss_fn(
             cell=cell, data_stimuli=data_stimuli, t_max=t_max, dt_ms=DT_MS,
             exp_spike_train=exp_train, stim_end_index=se,
-            loss_config=VanRossumLossConfig())
+            exp_voltage=jnp.asarray(trace.voltage),
+            loss_config=VanRossumLossConfig(weight_subthreshold=0.3, subthreshold_clamp_mv=-65))
     # guarino & ttfs_rate both need soft experimental features
     feat = extract_experimental_features(
         voltage_trace=jnp.asarray(trace.voltage), dt_ms=DT_MS,
@@ -245,7 +276,7 @@ def build_loss(loss_name, cell, data_stimuli, t_max, trace):
         return make_guarino_loss_fn(
             cell=cell, data_stimuli=data_stimuli, t_max=t_max, dt_ms=DT_MS,
             exp_features=feat, stim_duration_ms=trace.stim_duration_ms,
-            stim_end_index=se, loss_config=GuarinoLossConfig(weight_spike_count=0.3),
+            stim_end_index=se, loss_config=GuarinoLossConfig(weight_spike_count=0.1),
             temperature=0.3, beta=5.0, validity_beta=5.0)
     if loss_name == "ttfs_rate":
         return make_ttfs_rate_loss_fn(
@@ -260,9 +291,12 @@ def build_loss(loss_name, cell, data_stimuli, t_max, trace):
 def build(init, trace, loss_name, surrogate_slope=None):
     slope = surrogate_slope if surrogate_slope is not None \
         else GRAD_HP[loss_name]["surrogate_slope"]
+    # bptt_grad_clip is baked into the cell here (it's a channel property).
+    # Identity in the forward pass, so the NM runner that reuses this cell is
+    # unaffected; it only shapes the backward pass used by run_grad.
     cfg = TrainingConfig(surrogate_type="superspike", surrogate_slope=slope,
                          clip_to_bounds=False, use_param_transform=False,
-                         verbose=False)
+                         verbose=False, bptt_grad_clip=BPTT_GRAD_CLIP)
     with _silence():
         cell, data_stimuli, t_max, handles = setup_trainable_cell(
             initial_params=init, current_trace_pA=jnp.asarray(trace.current),
@@ -275,8 +309,12 @@ def build(init, trace, loss_name, surrogate_slope=None):
 def run_grad(init, trace, loss_name, hp=None):
     hp = hp or GRAD_HP[loss_name]
     _, handles, loss_fn = build(init, trace, loss_name, hp["surrogate_slope"])
+    # Cosine LR decay over the budget: Adam's step is ~lr regardless of the
+    # (small) gradient magnitude, so on this staircase loss a constant lr finds
+    # the basin then overshoots back out. Decaying lr->0 lets it settle instead.
     cfg = TrainingConfig(optimizer="adam", learning_rate=hp["lr"],
-                         n_epochs=MAX_ITERS, surrogate_type="superspike",
+                         n_epochs=MAX_ITERS, lr_schedule="cosine",
+                         surrogate_type="superspike",
                          surrogate_slope=hp["surrogate_slope"],
                          use_param_transform=hp["transform"], clip_to_bounds=False,
                          return_best=True, verbose=False)
@@ -409,7 +447,7 @@ def run():
                                 "loss": loss_name, "optimizer": optimizer,
                                 "delta": sc["delta"],
                                 "direction_idx": sc["direction_idx"],
-                                "iter": it, "loss": loss})
+                                "iter": it, "loss_value": loss})
                     except Exception as e:
                         row["accuracy_success"] = -1  # ERROR marker
                         print(f"  ERROR (s={sc['scenario_idx']}/{loss_name}/"

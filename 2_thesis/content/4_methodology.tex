@@ -117,7 +117,7 @@ Conversion complexity is reduced to a simple unit change: $I_\text{nA} = I_\text
 Before any of the gradient-based experiments make sense, we need to be confident that the forward simulation itself is correct.
 Otherwise, every later observation about loss landscapes, gradients, or training failures would be ambiguous: a real property of gradient-based optimisation, or just a bug in the dynamics?
 To rule out the latter, we compare our \gls{AdEx} channel against Brian2 \cite{Stimberg2019}, a widely-used and well-tested simulator for spiking neural networks.
-Both simulators are configured identically:
+Both simulators are configured (almost\footnote{Brian2 uses the same numerical integration scheme for both ODEs, whereas our AdEx implementation uses forward euler for the voltage equation and exponential euler for the adaption equation. We mitigate an effect of this difference by choosing a small enough time step.}) identically:
 \begin{itemize}
     \item Time step: $\Delta t = 0.01$ ms
     \item Simulation duration: 500 ms
@@ -165,6 +165,22 @@ For each configuration we look at three things: an overlay of the voltage traces
 $$\max_i |t_i^{\text{Jaxley}} - t_i^{\text{Brian2}}|,$$
 as a quantitative measure of agreement.
 The actual numbers are reported in \cref{sec:results:verification}.
+
+\subsection{Runtime Performance Comparison to Brian2}\label{sec:method:adex:runtime}
+We evaluate runtime performance of the AdEx implementation by comparing it to Brian2.
+To establish a fair comparison, we benchmark against the different available runtimes, namely the python environment using \textit{cython} and c++.
+In the last case, the model gets compiled into native c++ code which then is compiled to the target platform.
+We perform all tests on a MacBook Air, see more details in \cref{sec:method:compute-environment}.
+
+The benchmark is set up as follows:
+we simulate the AdEx equations with the same (tonic) parameters for different simulation lengths.
+Specifically, we time a single point neuron over a sweep of simulation durations ($200$--$5000$\,ms, i.e.\ $8{,}000$--$200{,}000$ integration steps)
+and separate the one-time compile/code-generation cost from the per-run integration walltime, which is the quantity compared.
+Each scenario is performed 20 times for a time step size of $dt = 0.025$.
+Brian2 is using the same numerical scheme for both equations, whereas Jaxley uses forward euler for the voltage equation and
+exponential euler for the adaptation.
+This choice is made, to further speed up the Brian2 simulation.
+Results are presented in \cref{sec:results:performance}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -500,6 +516,25 @@ The headline curves should be interpreted as basin-of-attraction estimates at sm
 Three scenarios (\texttt{tonic}, \texttt{adaptation}, \texttt{initial\_bursting}) cover the qualitatively distinct firing patterns over which an \gls{AdEx} fit must generalise.
 Total: $5 \times 3 \times 6 \times 30 = 2700$ runs per benchmark execution.
 For each $(\text{scenario}, \delta)$ tuple we compare $\Gamma$ distributions between methods using the two-sample Kolmogorov--Smirnov test on the $N_{\text{dir}} = 30$ recovered $\Gamma$ values per method.
+
+\subsection{Subthreshold Recovery Benchmark}\label{sec:method:opt:subthreshold-benchmark}
+The recovery-radius benchmark of \cref{sec:method:opt:recovery-benchmark} entangles two things that are hard to separate after the fact: the difficulty of the optimisation problem, and the difficulty of getting any gradient at all through the discrete spike mechanism.
+A failure there could reflect either.
+To isolate the second factor we run a companion benchmark in the \emph{non-spiking} regime, where the surrogate gradient never activates because no threshold crossing occurs.
+Below rheobase the adaptation and spike parameters drop out of the dynamics and only three parameters shape the voltage trace --- the membrane capacitance $C_m$, the leak reversal $E_L$ and the leak conductance $g_L$ --- so the task reduces to a clean three-parameter regression on a smooth voltage trace, with no custom-VJP node anywhere on the path from parameters to loss.
+This lets us ask a sharper question than the spiking benchmark can: setting the spike-credit-assignment problem aside entirely, does gradient descent on the raw \gls{MSE} loss actually behave worse than a derivative-free optimiser?
+
+The construction reuses the perturbation machinery of \cref{sec:method:opt:recovery-benchmark} with three changes.
+First, the stimulus is a subthreshold step ($100$\,pA, below rheobase; $30$\,ms pre-stimulus baseline followed by a $100$\,ms step, $\Delta t = 0.025$\,ms), and a non-spiking guard rejects and resamples any perturbed ground truth whose target trace crosses threshold, so every scenario stays in the subthreshold regime by construction.
+Second, all \gls{AdEx} parameters are still perturbed to build a realistic unknown ground truth (\cref{sec:method:opt:recovery-benchmark}), but only $\{C_m, E_L, g_L\}$ are made trainable; every fit starts from the same fixed initialisation (the tonic subthreshold values with the spike parameters set to non-spiking defaults).
+Third, the two methods compared are gradient descent (Adam, learning rate $0.2$, sigmoid parameter transform) and Nelder--Mead, both minimising the identical \gls{MSE} voltage loss, and both capped at the same budget of $25$ loss evaluations --- one Adam step (a forward and backward pass) against one Nelder--Mead function evaluation.
+Because a gradient step is more expensive than a bare loss evaluation, wall-clock time rather than evaluation count is the fair cost axis.
+A run counts as converged when a clean, non-surrogate re-simulation at the fitted parameters reaches an \gls{MSE} of $0.1$\,mV$^2$ or below.
+
+We run one base parameter set (\texttt{tonic}) over the perturbation grid $\delta\in\{0.1,0.2,0.3,0.4\}$ with $50$ random directions each, giving $200$ paired scenarios in which both optimisers fit the same target from the same initialisation.
+Because the comparison is fully paired on the scenario, we report paired statistics: a Wilcoxon signed-rank test on each continuous metric (final loss, parameter-recovery error, evaluations-to-tolerance, wall-clock time) and a McNemar test on the binary converged/not outcome.
+Runs that never reach the tolerance within the shared budget are right-censored to the budget rather than discarded, so the speed comparison also credits the method that converges more often.
+The results are reported in \cref{sec:results:subthreshold}.
 
 \section{Compute environment}\label{sec:method:compute-environment}
 All benchmark and verification runs are executed on a single MacBook Pro (Apple Silicon) with JAX configured to the CPU backend (\texttt{jax\_platform\_name="cpu"}) for reproducibility across machines without an accelerator;

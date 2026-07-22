@@ -2,3 +2,6 @@
 *.png
 
 results/*
+
+# Brian2 cpp_standalone build output (benchmark_walltime_standalone.py)
+standalone_build_*/

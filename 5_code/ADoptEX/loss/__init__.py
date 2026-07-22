@@ -6,6 +6,7 @@ This package provides:
 - guarino: Feature-based loss from Guarino et al. (2025)
 - van_rossum: Van Rossum spike train distance (van Rossum, 2001)
 - ttfs_rate: Minimal time-to-first-spike + firing-rate feature loss
+- soft_dtw: Soft-DTW voltage-trace distance (Cuturi & Blondel, 2017)
 - inject_spike_peaks: Differentiable spike peak injection for voltage traces
 """
 
@@ -38,6 +39,12 @@ def inject_spike_peaks(voltage: Array, spikes: Array, v_peak_mv: float = 35.0) -
     return spikes * v_peak_mv + (1.0 - spikes) * voltage
 
 
+# Imported after inject_spike_peaks is defined: soft_dtw depends on it, so this
+# import must follow the definition to avoid a circular-import failure.
+from .soft_dtw import (SoftDTWLossConfig, make_soft_dtw_loss_fn,  # noqa: E402
+                       sliding_window_max, soft_dtw_from_cost)
+
+
 __all__ = [
     # Utilities
     "inject_spike_peaks",
@@ -58,4 +65,9 @@ __all__ = [
     "TTFSRateLossConfig",
     "ttfs_rate_loss",
     "make_ttfs_rate_loss_fn",
+    # Soft-DTW loss
+    "SoftDTWLossConfig",
+    "make_soft_dtw_loss_fn",
+    "sliding_window_max",
+    "soft_dtw_from_cost",
 ]

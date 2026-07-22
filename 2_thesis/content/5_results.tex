@@ -5,7 +5,7 @@ This chapter reports four classes of empirical results in service of the central
 this is a precondition for the rest of the chapter, since it rules out the possibility that any later failure is an artefact of the dynamics rather than a property of the optimisation.
 \Cref{sec:results:landscape} characterises the loss surfaces the optimiser actually descends, on a $20\times 20$ two-parameter sweep over all $\binom{8}{2}=28$ trainable pairs for each of four differentiable losses, supplemented by focused panels that isolate one diagnostic feature per loss.
 The picture is a thin spiking valley flanked by a large non-spiking plateau.
-\Cref{sec:results:training} reports what happens when an optimiser is run on those surfaces: two worked examples (one synthetic, one on a real recording) and a recovery-radius benchmark over $2{,}700$ paired runs that compares three differentiable losses against two Nelder--Mead baselines on identical perturbed initialisations.
+\Cref{sec:results:training} reports what happens when an optimiser is run on those surfaces: two worked examples (one synthetic, one on a real recording), a recovery-radius benchmark over $2{,}700$ paired runs that compares three differentiable losses against two Nelder--Mead baselines on identical perturbed initialisations, and a companion subthreshold benchmark that isolates gradient descent from the spike mechanism entirely.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{An AdEx Channel for Jaxley}\label{sec:results:verification}
@@ -35,6 +35,59 @@ First, it establishes that an \gls{AdEx}-style simplified neuron --- with its di
 The same implementation pattern carries over to other simplified models such as \gls{LIF} and Izhikevich, so the contribution is not strictly limited to \gls{AdEx}.
 Second, and more importantly for the rest of this chapter: every optimisation failure we report from here on can be discussed as a property of gradient-based training and loss-function design, rather than as a possible artefact of the underlying dynamics.
 The forward model is not the bottleneck.
+
+\subsection{Runtime Comparison}\label{sec:results:performance}
+
+Having established that the \texttt{Jaxley} \gls{AdEx} channel reproduces Brian2's dynamics, we ask what it costs to run.
+We follow the experimental setup of \cref{sec:method:adex:runtime}.
+The spike counts logged alongside each timing (last column of \cref{tab:walltime}) confirm that the two simulators integrate the same model throughout: the largest disagreement anywhere in the sweep is $2$ spikes out of $507$ ($\leq 1.1\,\%$), and it grows with trace length, consistent with slow phase drift between two independent but individually converged integrators rather than a model discrepancy.
+
+\begin{table}[t]
+  \centering
+  \caption{Per-run \gls{AdEx} integration walltime (mean over $20$ repeats, $\Delta t = 0.025$\,ms).
+  Brian2 runs in its default runtime/Cython mode with its fastest scheme (\texttt{euler}, selected from a sweep over \texttt{euler}, \texttt{heun}, \texttt{milstein}, \texttt{rk2}, \texttt{rk4}); Jaxley uses forward Euler.
+  The final column reports spike counts (Jaxley/Brian2) as an equal-model guard.}
+  \label{tab:walltime}
+  \begin{tabular}{rrrrrr}
+    \toprule
+    $T$ (ms) & steps & Jaxley (ms) & Brian2 (ms) & speedup & spikes (Jx/Br) \\
+    \midrule
+    200 & 8000 & 0.462 & 142.53 & 308$\times$ & 10/10 \\
+    500 & 20000 & 1.129 & 246.64 & 218$\times$ & 41/41 \\
+    1000 & 40000 & 2.269 & 393.18 & 173$\times$ & 93/92 \\
+    2000 & 80000 & 4.540 & 682.87 & 150$\times$ & 196/195 \\
+    5000 & 200000 & 11.251 & 1489.74 & 132$\times$ & 507/505 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+In this default mode Jaxley is faster at every duration, by a geometric-mean factor of $188\times$ (range $132$--$308\times$; \cref{tab:walltime}).
+The two simulators scale linearly in the number of integration steps, as expected for a single uncoupled compartment.
+A per-step cost fit (\cref{fig:walltime-scaling}) gives $0.056\;\mu$s/step for Jaxley against $6.96\;\mu$s/step for Brian2 --- a $124\times$ gap per timestep --- with Jaxley's log--log scaling exponent at $0.99$ ($R^2 = 1.00$).
+Brian2's apparent exponent of $0.73$ is not sublinear integration but the signature of a fixed per-\texttt{run} dispatch overhead of tens of milliseconds that dominates the shorter traces.
+Expressed as throughput, Jaxley sustains $\approx 440\times$ real time across the whole sweep, whereas Brian2 in this mode reaches at most $3.4\times$ real time on the longest trace.
+The one-time cost does not change the picture: Jaxley's \gls{JIT} compile ($0.13$\,s mean) is smaller than Brian2's code generation ($0.70$\,s mean), so Jaxley wins even for a single run including overhead.
+
+\begin{figure}[t]
+  \begin{center}
+    \includegraphics[width=\textwidth]{figures/walltime_standalone_spectrum.pdf}
+  \end{center}
+  \caption{Per-run \gls{AdEx} integration walltime across the full spectrum of Brian2 configurations, as a function of the number of integration steps $N = T/\Delta t$ (error bars are $\pm$std over $20$ repeats, often smaller than the markers).
+  \textbf{(a)} Absolute walltime (log--log): Jaxley (forward Euler, warm in-process compute) against Brian2 in its default runtime/Cython mode and its best-case compiled \texttt{cpp\_standalone} device.
+  \emph{C++ loop} is the standalone binary's self-reported integration time (the fair compute-vs-compute analog of Jaxley's warm time); \emph{run() wall} additionally pays per-call process spawn and result I/O.
+  All curves scale linearly in $N$; the vertical offset to the runtime/Cython curve is the $\sim\!10^2\times$ per-run gap of \cref{tab:walltime}.
+  \textbf{(b)} The corresponding Jaxley speedup $t_\mathrm{Brian2}/t_\mathrm{Jaxley}$ (log $y$) against each configuration.
+  The measured advantage spans two orders of magnitude --- from essentially parity with the compiled C++ loop to $\approx\!300\times$ against default runtime --- purely by how Brian2 is configured and timed.}\label{fig:walltime-scaling}
+\end{figure}
+
+The $\sim\!10^2\times$ headline should not be over-read, and \cref{fig:walltime-scaling}(a) is included to keep the comparison honest.
+Brian2's default runtime mode keeps its integration loop in the Python interpreter, which for a single point neuron is dominated by per-timestep interpreter overhead --- Brian2's worst case.
+Its \texttt{cpp\_standalone} device compiles the whole simulation to a standalone C++ program with no Python in the loop, using Brian2's own default optimised build flags.
+Against that best case the fair compute-vs-compute comparison --- Jaxley's warm in-process time against the compiled binary's self-reported integration loop --- is essentially a tie: Jaxley ranges from $1.0\times$ at short durations to $0.9\times$ (i.e.\ marginally slower than the C++ loop) at $5000$\,ms.
+The end-to-end \texttt{run()} wall of the standalone binary, which re-executes the compiled program and pays OS process spawn plus result-file I/O on every call, sits between these extremes at $1.9$--$20.5\times$.
+The defensible statement is therefore that the Jaxley \gls{AdEx} implementation is between roughly on par with (compiled C++) and two orders of magnitude faster than (default runtime) Brian2, depending entirely on Brian2's configuration.
+The point of this benchmark is not that Jaxley out-computes an optimised C compiler on a scalar loop --- it does not --- but that it reaches comparable raw throughput while remaining, unlike Brian2, end-to-end differentiable, batchable via \texttt{vmap}, and GPU-portable.
+It is precisely those properties, not a raw-speed advantage, that the gradient-based optimisation in the remainder of this chapter depends on.
 
 \subsection{Surrogate Channel Verification}\label{sec:results:verification:surrogate}
 \begin{figure*}
@@ -387,3 +440,51 @@ The multi-trace extension of \cref{sec:method:opt:stabilization:multi-trace} is 
 \textbf{Fixed hyperparameters.} The configurations in \cref{tab:training-params} are the hyperparameters used in this single-stage setting;
 per-scenario, per-$\delta$ or per-method HP tuning could possibly shift radii up --- this is part of the tuning problem which we will discuss in the next chapter (ch. \ref{ch:discussion}).
 The radii reported here are therefore meant to characterise the methods as one would actually deploy them, not their best possible behaviour under unconstrained tuning.
+
+\subsection{Subthreshold Recovery: Gradient Descent Without Spikes}\label{sec:results:subthreshold}
+The recovery-radius benchmark leaves an ambiguity: when a gradient method loses to Nelder--Mead, is that because gradient descent is the weaker optimiser, or because the surrogate gradient through the spike mechanism is a poor search direction?
+The subthreshold benchmark of \cref{sec:method:opt:subthreshold-benchmark} settles this by removing the spike path entirely.
+Below rheobase only $\{C_m, E_L, g_L\}$ shape the trace, the custom-VJP surrogate never fires, and the \gls{MSE} loss becomes a smooth three-parameter regression --- the cleanest possible probe of gradient descent against a derivative-free baseline on identical, paired scenarios.
+The verdict reverses that of the spiking benchmark: with no spikes in the way, gradient descent is the stronger optimiser, not the weaker one.
+
+\Cref{fig:subthreshold-convergence} shows the outcome.
+Gradient descent converges (clean-simulation \gls{MSE} $\leq 0.1$\,mV$^2$) on $80\,\%$ of the $200$ scenarios against Nelder--Mead's $53\,\%$, and it holds this lead at every perturbation scale, from $100\,\%$ vs $70\,\%$ at $\delta = 0.1$ to $56\,\%$ vs $46\,\%$ at $\delta = 0.4$.
+The paired comparison is unambiguous: on the $89$ scenarios where the two methods disagree on convergence, gradient descent is the one that succeeds in $71$ of them and Nelder--Mead in only $18$ (McNemar $p < 10^{-4}$).
+
+The efficiency comparison is the central number, and the axis on which it must be read is the number of loss evaluations --- each of which is one forward \gls{AdEx} simulation, the dominant cost of any fit --- rather than raw wall-clock time.
+Both optimisers are given the same budget of $25$ evaluations, one Adam step counting as one forward-and-backward pass against one Nelder--Mead function evaluation.
+On this axis gradient descent is decisively more sample-efficient: it reaches the convergence tolerance in a median of $9$ fewer evaluations than Nelder--Mead (Wilcoxon $p < 10^{-4}$, lower in $80\,\%$ of pairs), while also reaching a lower final loss (median final \gls{MSE} $0.027$\,mV$^2$ against $0.091$\,mV$^2$; paired difference $-0.054$\,mV$^2$, better in $77\,\%$ of pairs, $p < 10^{-4}$).
+The gradient carries per-evaluation information that lets each forward simulation count for more, which is exactly the currency that matters once the forward model is expensive.
+Wall-clock time runs the other way on this three-parameter toy problem --- the backward pass makes a gradient evaluation more costly than a bare loss evaluation, so at a matched evaluation budget gradient descent takes longer in absolute seconds --- but that gap is an artefact of the trivial problem size, where autodiff overhead has nothing to amortise against, and it inverts as soon as the per-simulation cost dominates the per-step bookkeeping.
+
+\begin{figure}[t]
+  \begin{center}
+    \includegraphics[width=\textwidth]{figures/subthreshold_convergence.pdf}
+  \end{center}
+  \caption{Subthreshold recovery, gradient descent (Adam) vs Nelder--Mead on the identical \gls{MSE} loss, paired over $200$ scenarios.
+(a) Probability of convergence (clean re-simulation \gls{MSE} $\leq 0.1$\,mV$^2$) as a function of the perturbation scale $\delta$; gradient descent dominates at every $\delta$.
+(b) Loss evaluations to reach tolerance and (c) wall-clock time per run, over the converged runs only.
+Gradient descent reaches tolerance in fewer forward-simulation evaluations --- the cost axis that matters for fitting --- even though a single evaluation carries a backward pass and so costs more absolute wall-clock time on this three-parameter problem.}\label{fig:subthreshold-convergence}
+\end{figure}
+
+There is one important caveat, and it connects directly back to the loss geometry of \cref{sec:results:landscape}.
+Converging to a lower voltage \gls{MSE} does \emph{not} translate into better parameter recovery.
+Measured as bound-normalised parameter error, gradient descent is if anything slightly worse than Nelder--Mead (median $0.081$ vs $0.052$; better in only $24\,\%$ of pairs, and the paired test does not favour it), even though it wins decisively on the loss it actually minimises (\cref{fig:subthreshold-fit-quality}).
+This is the subthreshold signature of the degeneracy already visible in the landscape plots: $C_m$, $E_L$ and $g_L$ trade off along an extended low-loss valley (the $g_L$--$E_L$ direction of \cref{sec:results:landscape:shared}), so many distinct parameter triples produce near-identical subthreshold traces.
+A better optimiser finds a lower point in that valley without necessarily landing closer to the true parameters.
+The subthreshold problem is therefore well-behaved as an \emph{optimisation} problem and simultaneously ill-posed as an \emph{identification} problem --- a distinction we return to in \cref{ch:discussion}.
+
+\begin{figure}[t]
+  \begin{center}
+    \includegraphics[width=0.7\textwidth]{figures/subthreshold_fit_quality.pdf}
+  \end{center}
+  \caption{Fit quality over all subthreshold runs.
+Left: final \gls{MSE} on a clean re-simulation (log scale) --- gradient descent reaches lower loss.
+Right: mean bound-normalised parameter-recovery error --- the two methods are indistinguishable, with gradient descent if anything slightly worse.
+Lower loss does not imply better parameter recovery: the subthreshold loss is degenerate in $\{C_m, E_L, g_L\}$.}\label{fig:subthreshold-fit-quality}
+\end{figure}
+
+Two conclusions carry forward.
+First, gradient descent with the Jaxley \gls{AdEx} channel is not intrinsically broken: given a differentiable path to the loss, it is competitive with and often better than a strong derivative-free baseline, and more sample-efficient in forward-simulation evaluations.
+The failures in the spiking benchmark of \cref{sec:results:baseline} are properties of the spike-mechanism gradient and the loss surfaces it has to cross, not of gradient descent as such.
+Second, even in this benign regime the loss and the parameters are only loosely coupled, which sets a ceiling on what any single-trace method --- gradient or derivative-free --- can recover, and motivates the multi-trace direction of \cref{sec:method:opt:stabilization:multi-trace}.

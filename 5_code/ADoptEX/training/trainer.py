@@ -47,6 +47,12 @@ class TrainingConfig:
     surrogate_type: Literal["sigmoid", "exponential", "superspike"] = "sigmoid"
     surrogate_slope: float = 5.0
 
+    # Clipped backprop-through-time: per-timestep cap on the membrane-potential
+    # cotangent in the backward pass. Bounds the recurrent adjoint so gradients
+    # stay finite through long, high-firing traces (the AdEx exp spike mechanism
+    # otherwise makes them explode to inf/NaN). None disables it.
+    bptt_grad_clip: float | None = None
+
     # Parameter constraints
     clip_to_bounds: bool = True
     use_param_transform: bool = False
@@ -211,6 +217,7 @@ def setup_trainable_cell(
         trainable_params=trainable_params,
         record=True,
         v_init=v_init,
+        bptt_grad_clip=config.bptt_grad_clip,
     )
 
     # Convert pA → nA and setup data stimulation

@@ -90,7 +90,7 @@ However, the cost is sample efficiency — each candidate requires a full forwar
 \subsection{Gradient-based Tuning}\label{sec:bg:tuning:gradient-based}
 Gradient-based optimisation requires computing the partial derivative $\partial L / \partial \theta$ for all trainable parameters.
 Doing this analytically is impractical and inefficient for complex simulations with thousands of timesteps.
-\gls{AD} solves this by decomposing the computation into elementary operations and applying the chain rule\mwarning{Alex underlined this. Should I define the chain rule? Isn't that basic analysis knowledge? What exactly am I missing here.} systematically.
+\gls{AD} solves this by decomposing the computation into elementary operations and applying the chain rule systematically.
 The most common method is reverse-mode \gls{AD}, also called \gls{BP}, is a particularly efficient method:
 it creates a computational graph of operations --- each of them has to be differentiable.
 Then one backward pass yields all parameter gradients simultaneously.
@@ -109,7 +109,6 @@ To use \gls{AdEx} for biophysical simulations, the actual model parameters ($g_L
 Some affect every timestep (leak), others only act at spike events (e.g. reset and adaptation variables).
 A loss function must quantify similarity between simulated and recorded spike trains.
 Whether \gls{SG}, which were shown to work for weight training, also enable biophysical parameter fitting (for simplified neuron models) remains an open question.
-\iwarning{I rewrote that paragraph, is that clearer now?}
 
 Training these models on real data requires differentiating through the forward simulation.
 Because \gls{LIF}-type models are discontinuous (see reset in equation~\ref{eq:adex3}), automatic differentiation produces undefined or zero gradients.
