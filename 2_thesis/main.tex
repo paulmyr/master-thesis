@@ -5,8 +5,9 @@
 %% Engineering Program in Computer Science at KTH ICT. Adaptation is the
 %% translation of English headings into Swedish as the addition of Swedish
 
-\documentclass[final, english, biblatex]{kththesis}
-%\documentclass[english, biblatex]{kththesis}
+%\documentclass[final, english, biblatex]{kththesis}
+\documentclass[english, biblatex]{kththesis}
+
 \usepackage[utf8]{inputenc}
 
 %% Conventions for todo notes:
@@ -140,7 +141,7 @@ morekeywords={begin, todo, textbf, textit, texttt}
 % Enter the English and Swedish keywords here for use in the PDF meta data _and_ for later use
 % following the respective abstract.
 % Try to put the words in the same order in both languages to facilitate matching. For example:
-\EnglishKeywords{Automatic Gradient Descent, Integrate-and-Fire Model, Simplified Neuron Model, Surrogate Gradients, Parameter Estimation}
+\EnglishKeywords{Gradient Descent, Integrate-and-Fire Model, Simplified Neuron Model, Surrogate Gradients, Parameter Estimation, Automatic Differentiation}
 \SwedishKeywords{TODO KEYWORDS SWEDISH}
 \GermanKeywords{TODO KEYWORDS GERMAN}
 
@@ -380,9 +381,11 @@ ger
 
 \listoftables
 \cleardoublepage
-\lstlistoflistings\engExpl{If you have listings in your thesis. If not, then remove this preface page.}
-\iwarning{No \texttt{lstlisting} environments appear in the body --- this list will be empty. Remove unless you actually add listings.}
-\cleardoublepage
+
+%\lstlistoflistings\engExpl{If you have listings in your thesis. If not, then remove this preface page.}
+%\iwarning{No \texttt{lstlisting} environments appear in the body --- this list will be empty. Remove unless you actually add listings.}
+%\cleardoublepage
+
 % Align the text expansion of the glossary entries
 \newglossarystyle{mylong}{%
   \setglossarystyle{long}%
@@ -423,11 +426,6 @@ ger
 \itodo{Keywords}
 \itodo{Keywords swedish}
 \itodo{Keywords german}
-\iwarning{The eight \texttt{\textbackslash itodo} items above are already covered by the consolidated preamble note further down (items a--f). Pick one location and delete the other to avoid drift.}
-
-\itodo{Preamble issues to address (cannot annotate there directly): (a) \texttt{\textbackslash subtitle} still says ``THESIS SUB TOPIC''; (b) \texttt{\textbackslash alttitle}/\texttt{\textbackslash altsubtitle} are template Swedish placeholders; (c) Swedish + German keywords are \texttt{TODO}; (d) presentation date 2022-03-15, Zoom URL \texttt{ddddddddddd}, default address; (e) opponent ``A. B. Normal''; (f) TRITA \texttt{2022:00}; (g) duplicate (commented) glossary setup at lines 55--58 vs 122--125 --- delete the dead block; (h) commented-out \texttt{doclicense} block (CC) is dead config; (i) \texttt{XML} listing language and \texttt{\textbackslash colorbitbox} bytefield helper appear unused for a neuron-model thesis; (j) \texttt{\textbackslash sweExpl} is defined then immediately silenced via \texttt{\textbackslash renewcommand}; (k) verify \texttt{\textbackslash generalExpl}, \texttt{\textbackslash warningExpl}, \texttt{\textbackslash mtodo}, \texttt{\textbackslash deadline}, \texttt{\textbackslash ttodo}, and the \texttt{L} column type are actually used in \texttt{content/}.}
-
-\iwarning{Front/back-matter content gap: the English, Swedish and German abstracts, the Acknowledgements, the AI Disclosure, and the Conclusions chapter are all still \texttt{\textbackslash itodo} placeholders. The AI Disclosure is required by KTH. A reader hitting the front matter currently gets none of the thesis's story. Also: the English keyword ``Automatic Gradient Descent'' is likely a misnomer --- did you mean ``Gradient Descent'' / ``Automatic Differentiation''?}
 
 % End of Abstract
 % ----------------------------------------------------------------------------------------------
@@ -462,7 +460,7 @@ ger
 % ----------------------------------------------------------------------------------------------
 % Appendix
 
-\iwarning{If you do not have an appendix, do not include the \textbackslash cleardoublepage command below, otherwise the last page number in the meta data will be one too large.}
+%\iwarning{If you do not have an appendix, do not include the \textbackslash cleardoublepage command below, otherwise the last page number in the meta data will be one too large.}
 \cleardoublepage
 \appendix
 \renewcommand{\chaptermark}[1]{\markboth{Appendix \thechapter\relax:\thinspace\relax#1}{}}
@@ -515,7 +513,6 @@ Spike threshold            & \multicolumn{5}{c}{$0$\,mV} \\
 \end{landscape}
 
 \section{Loss Landscape Analysis}\label{sec:app:loss}
-\ierror{This whole section reads like Methodology + Results, not appendix material. The setup paragraph (28 pairs, 11{,}200 simulations, 3.8\,h compute) belongs in Methodology, and the cross-loss plateau comparison (todo at end of section) belongs in Results. Consider moving the prose into \texttt{4\_methodology.tex} / \texttt{5\_results.tex} and leaving only figure plates here, if anything.}
 To characterize the optimization problem independently of any particular training run, we computed each of the four loss functions on a dense two-parameter grid ($20 \times 20 = 400$ points per pair) for 28 parameter pairs, for a total of $11{,}200$ simulations and $\sim$3.8\,h of compute.
 The remaining parameters were held at the default initial values of \cref{tab:adex_params}.
 
@@ -543,11 +540,10 @@ is characterized by lots of local minima. Some parameter combinations are also c
     \includegraphics[width=\textwidth]{figures/soft-dtw_grad_landscape_grid.pdf}
     \caption{Gradient landscape.}\label{fig:results:sdtw-grad-landscape}
   \end{subfigure}
-  \caption{When observing the \gls{SDTW} loss landscape, we identify very thin and deep valleys containing the global minima.
-This is correlating with the observation, that \gls{SDTW} was only able to recover very small parameter perturbations.
+  \caption{When observing the \gls{SDTW} loss landscape, we identify very thin and deep valleys containing the global minimum.
+This correlates with the observation, that \gls{SDTW} was only able to recover very small parameter perturbations.
 For larger perturbations, gradients were close to 0, which can be explained by the large loss plateaus visible.}
 \end{figure}
-\mwarning{Caption: ``This is correlating with'' $\to$ ``This correlates with''; ``the global minima'' $\to$ ``the global minimum'' (singular).}
 
 \begin{figure}[h]
   \centering
@@ -559,11 +555,10 @@ For larger perturbations, gradients were close to 0, which can be explained by t
     \includegraphics[width=\textwidth]{figures/vanrossum_grad_landscape_grid.pdf}
     \caption{Gradient landscape.}\label{fig:results:vanrossum-grad-landscape}
   \end{subfigure}
-  \caption{The Van-Rossum loss promises to be a more interesting candidate based on these loss landscape plots.
+  \caption{The Van Rossum loss promises to be a more interesting candidate based on these loss landscape plots.
 For example, the local minima are less pronounced than in the \gls{MSE} landscape, even though still present.
-The global minima valleys tend to be less narrow compared to \gls{SDTW}; however, they still tend to be surrounded by large loss plateaus.}
+The global-minimum valleys tend to be less narrow compared to \gls{SDTW}; however, they still tend to be surrounded by large loss plateaus.}
 \end{figure}
-\mwarning{Caption: ``Van-Rossum'' $\to$ ``Van Rossum'' (spelling consistency); ``The global minima valleys'' $\to$ ``The global-minimum valleys''.}
 
 \begin{figure}[h]
   \centering
