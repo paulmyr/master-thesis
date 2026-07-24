@@ -1,10 +1,10 @@
-\chapter{Conclusions and Future work}\label{ch:conclusionsAndFutureWork}\deadline{May 31st}
+\chapter{Conclusions and Future work}\label{ch:conclusionsAndFutureWork}\deadline{July 31st}
 
 % Conclusions your conclusions. A few short sentences.
 
 \section{Conclusions}
 \label{sec:conclusions}
-\itodo{write conclusion}\iwarning{The Conclusions chapter --- a required section --- is empty. Highest-priority content gap: the thesis currently has no concluding synthesis of the results.}
+\ierror{write conclusion}
 
 \section{Future Work}
 \label{sec:future-work}
@@ -21,24 +21,19 @@ Better understanding the affect of loss functions when gradient-based optimizati
 In the context of feature-based losses we mentioned the problem of too many hyperparameters.
 This is made worse when taking feature weighing into account --- this is a problem of multi-objective optimization.
 Pareto fronts have not been explored or discussed in the context of this work due to time constraints.
-They might help \ierror{Sentence trails off incomplete --- ``They might help\dots'' what? Finish or remove.}
 
 Analysing different stabilization techniques to reduce vanishing/exploding gradients could 
 most likely improve the qualitative results of this method.
-Using multi-trace optimization could help with the under-constrained fundamental problem of fitting the AdEx
+Using multi-trace optimization could help with the under-constrained fundamental problem of fitting the \gls{AdEx}
 model to spike timings, which is an essential next step in the task of neuron model fitting.
 
 \section{Reflections}
 \label{sec:reflections}
 
-% Don't forget that there must be a chapter dealing with aspects of your work and ethics,
-% sustainability and relations with the surrounding community.
-
 The work does not raise ethical concerns.
 All neuron recordings are simulated or sourced from the publicly released Johansson \& Silberberg recordings under their original ethics approval.
-No animal experiments or were performed\ierror{Garbled: ``No animal experiments or were performed'' --- drop the stray ``or'' (``No animal experiments were performed'').} for this thesis.
-Any positive results might actually help to reduce need of real recordings by more\mwarning{Duplicate ``more'': ``by more enabling more accurate'' $\to$ ``by enabling more accurate''. Also ``reduce need of'' $\to$ ``reduce the need for''.} enabling more accurate,
-large-scale brain simulations.
+No animal experiments were performed for this thesis.
+Any positive results might actually help to reduce the need for real recordings by enabling more accurate, large-scale brain simulations.
 
 The most economically and socially relevant aspect of this work is the negative result itself.
 \gls{HPC}-scale gradient-based parameter fitting of biophysical neuron models,
@@ -51,5 +46,5 @@ should factor this in;
 However, the provided implementation also enables GPU-based implementations of different optimization methods
 through the underlying \texttt{JAX} layer.
 
-Energy consumption was kept to a minimal\mwarning{``kept to a minimal'' $\to$ ``kept to a minimum''.}.
+Energy consumption was kept to a minimum.
 Almost all computations were performed on a single Apple MacBook Air (M1).
