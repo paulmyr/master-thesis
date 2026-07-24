@@ -5,34 +5,35 @@
 \itodo{Structure of this chapter can change, should more or less reflect the structure of whole thesis}
 
 In the last century, studying and modelling neurons has been seen as the gateway of understanding the brain in its entirety.
+%\iwarning{The introduction opens informally (``gateway of understanding the brain in its entirety'', ``\dots{}20 years ago'' below). Consider a more precise, formal framing for an academic introduction.}
 What first started with very simple \gls{LIF}-models, quickly became proving ground for more complex and more sophisticated ideas.
-Lack of computational resources has been a primary driver for why simplified neuron models were still developed, because they promised to be the only way to really model parts of the brain on super computers 20 years ago.
+Lack of computational resources has been a primary driver for why simplified neuron models were still developed, because they promised to be the only way to really model parts of the brain on super-computers 20 years ago.
 With the steady increase in computing power, the research community shifted focus from those models in favour of more sophisticated \gls{HH}-type models, which require more computational resources to simulate and to fit parameters to.
 However, the idea of simulating the brain as whole has remained an unreachable goal for many decades, until now.
 
 Computational power has reached whole new levels, and using computationally less intensive simplified models might be the key step to perform whole brain simulations.
 Adaptive models like \gls{AdEx} can faithfully capture the firing behaviour of diverse neuron types and therefore promise to be a prime candidate for realistic large-scale simulations.
 However, this needs very fast and efficient, reliable, and effective optimization methods to fit neuron models to experimental data.
-Due to the non differentiable nature of simplified models, optimization methods like grid search or evolutionary algorithms are used instead of gradient methods.
+Due to the non-differentiable nature of simplified models, optimization methods like grid search or evolutionary algorithms are used instead of gradient methods.
 
 In this work, we investigate whether surrogate gradient techniques can enable gradient-based parameter estimation for simplified neuron models.
 Specifically, we ask:
 \begin{enumerate}
-  \item Can surrogate gradients produce useful parameter updates for the \gls{AdEx} model? And
-  \item what loss function design is required to achieve successful optimization? 
-  \item what stabilisation methods aid successful optimization? 
+  \item can surrogate gradients produce useful parameter updates for the \gls{AdEx} model,
+  \item what loss function design is required to achieve successful optimization and
+  \item what stabilization methods aid successful optimization?
 \end{enumerate}
 To investigate this, we make the following contributions:
 \begin{enumerate}
   \item We implement a surrogate gradient-enabled \gls{AdEx} model within the state-of-the-art \texttt{Jaxley} framework, enabling gradient-based parameter optimization.
-  \item We investigate loss function requirements, investigate and compare voltage-based \gls{MSE}, feature-based and distance-based losses.
-  \item We systematically test the robustness of the gradient-based optimisation, measuring spike timing accuracy using a coincidence factor metric.
-  \item We cannot find similar success as was demonstrated for this approach using \gls{HH}-type models, which will be thoroughly discussed by addressing the potential failure modes.
+  \item We investigate loss function requirements and compare voltage-based \gls{MSE}, feature-based and distance-based losses.
+  \item We systematically test the robustness of the gradient-based optimization, measuring spike timing accuracy using a coincidence factor metric.
+  \item We show that gradient-fitting does not transfer to \gls{AdEx} from differentiable \gls{HH}-type models, and we address the potential failure modes.
 \end{enumerate}
 Further work is needed to enable efficient and effective parameter optimization using gradient-based optimization.
 
-In this work we will demonstrate how to bridge two worlds: combine gradient optimisation using Jaxley for using simplified models in bio-physical neuron simulations.
+In this work we will demonstrate how to bridge two worlds:
+combine gradient optimization using simplified models in biophysical neuron simulations.
 We start giving a brief background introduction in \cref{ch:background} and an overview over the related work in \cref{ch:relwork}.
-In \cref{ch:method} we introduce our methodology, \cref{ch:results} contains our findings and \cref{sec:discussion} provides reasoning.
-We conclude in \cref{ch:conclusing}, discuss future work and ethical considerations.
-
+In \cref{ch:method} we introduce our methodology, \cref{ch:results} contains our findings and \cref{ch:discussion} provides reasoning.
+We conclude in \cref{ch:conclusionsAndFutureWork}, discuss future work and ethical considerations.

@@ -92,7 +92,7 @@
     }
 }{}
 
-%% Add some more keyowrds to bring out the structure more
+%% Add some more keywords to bring out the structure more
 \lstdefinestyle{[LaTeX]TeX}{
 morekeywords={begin, todo, textbf, textit, texttt}
 }
@@ -141,7 +141,7 @@ morekeywords={begin, todo, textbf, textit, texttt}
 % following the respective abstract.
 % Try to put the words in the same order in both languages to facilitate matching. For example:
 \EnglishKeywords{Automatic Gradient Descent, Integrate-and-Fire Model, Simplified Neuron Model, Surrogate Gradients, Parameter Estimation}
-\SwedishKeywords{TODO KEYWORDS SWEDSISH}
+\SwedishKeywords{TODO KEYWORDS SWEDISH}
 \GermanKeywords{TODO KEYWORDS GERMAN}
 
 %%%%% For the oral presentation
@@ -299,7 +299,7 @@ morekeywords={begin, todo, textbf, textit, texttt}
 
 \cleardoublepage
 \listoftodos
-\iwarning{Document class is set to \texttt{final}, which suppresses todos --- the list of todos will render empty in the final PDF. Either drop \texttt{final} during drafting or remove \texttt{\textbackslash listoftodos} for the final build.}
+\iwarning{Correction (verified by compiling): despite \texttt{final} in the document class, todos \emph{do} render --- \texttt{todonotes} is loaded in \texttt{lib/includes.tex} without \texttt{obeyFinal}, so every \texttt{\textbackslash todo} (and this whole annotation pass) appears and \texttt{\textbackslash listoftodos} is populated (122 entries). For a clean \emph{final} PDF, add \texttt{obeyFinal} to the \texttt{todonotes} load or pass it \texttt{disable}, and remove \texttt{\textbackslash listoftodos}. Minor: a marginpar-crowding ``Float(s) lost'' occurs at the end of ch.~4 --- one margin note near that page bottom may not print (no figure/table is affected).}
 
 \cleardoublepage
 \setcounter{page}{1}
@@ -360,9 +360,9 @@ ger
 \babelpolyLangStop{ngerman}
 \cleardoublepage
 
-\section*{Acknowledgments}
-\markboth{Acknowledgments}{}
-  \itodo{Acknowledgments}
+\section*{Acknowledgements}
+\markboth{Acknowledgements}{}
+  \itodo{Acknowledgements}
 \acknowlegmentssignature
 
 \subsection*{AI Disclosure}
@@ -427,6 +427,8 @@ ger
 
 \itodo{Preamble issues to address (cannot annotate there directly): (a) \texttt{\textbackslash subtitle} still says ``THESIS SUB TOPIC''; (b) \texttt{\textbackslash alttitle}/\texttt{\textbackslash altsubtitle} are template Swedish placeholders; (c) Swedish + German keywords are \texttt{TODO}; (d) presentation date 2022-03-15, Zoom URL \texttt{ddddddddddd}, default address; (e) opponent ``A. B. Normal''; (f) TRITA \texttt{2022:00}; (g) duplicate (commented) glossary setup at lines 55--58 vs 122--125 --- delete the dead block; (h) commented-out \texttt{doclicense} block (CC) is dead config; (i) \texttt{XML} listing language and \texttt{\textbackslash colorbitbox} bytefield helper appear unused for a neuron-model thesis; (j) \texttt{\textbackslash sweExpl} is defined then immediately silenced via \texttt{\textbackslash renewcommand}; (k) verify \texttt{\textbackslash generalExpl}, \texttt{\textbackslash warningExpl}, \texttt{\textbackslash mtodo}, \texttt{\textbackslash deadline}, \texttt{\textbackslash ttodo}, and the \texttt{L} column type are actually used in \texttt{content/}.}
 
+\iwarning{Front/back-matter content gap: the English, Swedish and German abstracts, the Acknowledgements, the AI Disclosure, and the Conclusions chapter are all still \texttt{\textbackslash itodo} placeholders. The AI Disclosure is required by KTH. A reader hitting the front matter currently gets none of the thesis's story. Also: the English keyword ``Automatic Gradient Descent'' is likely a misnomer --- did you mean ``Gradient Descent'' / ``Automatic Differentiation''?}
+
 % End of Abstract
 % ----------------------------------------------------------------------------------------------
 %  Content
@@ -467,11 +469,11 @@ ger
 
 \chapter{Figures and Tables}
 
-\section{Detailed Experiment Configuration}
+\section{Detailed Experiment Configuration}\ierror{Broken ref in \cref{tab:training-params} below (``Parameter transform'' row): \texttt{\textbackslash cref\{sec:training-stabilization\}} has no such label --- use \texttt{sec:method:opt:stabilization}.}
 \begin{landscape}
 \begin{table}[t]
 \centering
-\caption{Method configurations for the recovery-radius benchmark. The three gradient methods share an identical optimiser, surrogate, and parameter-transform setup; they differ only in the loss function. \texttt{nm\_guarino} optimises the same soft Guarino loss with Nelder--Mead, evaluating but not consuming the surrogate gradient. \texttt{nm\_guarino\_hard} optimises the same loss composition with \emph{hard} feature extraction (threshold-crossing spike detection on both simulated and target traces), so the soft-feature hyperparameters $\tau$, $\beta$, $\beta_v$ vanish from its configuration.}
+\caption{Method configurations for the recovery-radius benchmark. The three gradient methods share an identical optimizer, surrogate, and parameter-transform setup; they differ only in the loss function. \texttt{nm\_guarino} optimizes the same soft Guarino loss with Nelder--Mead, evaluating but not consuming the surrogate gradient. \texttt{nm\_guarino\_hard} optimizes the same loss composition with \emph{hard} feature extraction (threshold-crossing spike detection on both simulated and target traces), so the soft-feature hyperparameters $\tau$, $\beta$, $\beta_v$ vanish from its configuration.}
 \label{tab:training-params}
 \small
 \setlength{\tabcolsep}{4pt}
@@ -479,7 +481,7 @@ ger
 \toprule
 \textbf{Parameter} & \texttt{grad\_mse} & \texttt{grad\_guarino} & \texttt{grad\_vanrossum} & \texttt{nm\_guarino} & \texttt{nm\_guarino\_hard} \\
 \midrule
-\multicolumn{6}{l}{\textit{Optimiser}} \\
+\multicolumn{6}{l}{\textit{Optimizer}} \\
 Algorithm                 & \multicolumn{3}{c}{Polyak SGD}                                & \multicolumn{2}{c}{Nelder--Mead} \\
 Learning rate             & \multicolumn{3}{c}{$0.001$}                                   & \multicolumn{2}{c}{---} \\
 Polyak $(\alpha,\beta)$   & \multicolumn{3}{c}{$(0.8,\,0.6)$}                             & \multicolumn{2}{c}{---} \\
@@ -493,7 +495,7 @@ Surrogate slope $\beta$   & \multicolumn{3}{c}{$6.0$}                           
 \midrule
 \multicolumn{6}{l}{\textit{Loss-specific parameters}} \\
 Feature extraction        & ---   & soft    & ---     & soft    & hard \\
-MSE: normalise            & False & ---     & ---     & ---     & --- \\
+MSE: normalize            & False & ---     & ---     & ---     & --- \\
 MSE: voltage clamp        & none  & ---     & ---     & ---     & --- \\
 Guarino: feature temp.\ $\tau$ & --- & $0.5$ & ---   & $0.25$  & --- \\
 Guarino: sigmoid sharpness $\beta$ & --- & $10.0$ & --- & $10.0$ & --- \\
@@ -514,7 +516,7 @@ Spike threshold            & \multicolumn{5}{c}{$0$\,mV} \\
 
 \section{Loss Landscape Analysis}\label{sec:app:loss}
 \ierror{This whole section reads like Methodology + Results, not appendix material. The setup paragraph (28 pairs, 11{,}200 simulations, 3.8\,h compute) belongs in Methodology, and the cross-loss plateau comparison (todo at end of section) belongs in Results. Consider moving the prose into \texttt{4\_methodology.tex} / \texttt{5\_results.tex} and leaving only figure plates here, if anything.}
-To characterise the optimisation problem independently of any particular training run, we computed each of the four loss functions on a dense two-parameter grid ($20 \times 20 = 400$ points per pair) for 28 parameter pairs, for a total of $11{,}200$ simulations and $\sim$3.8\,h of compute.
+To characterize the optimization problem independently of any particular training run, we computed each of the four loss functions on a dense two-parameter grid ($20 \times 20 = 400$ points per pair) for 28 parameter pairs, for a total of $11{,}200$ simulations and $\sim$3.8\,h of compute.
 The remaining parameters were held at the default initial values of \cref{tab:adex_params}.
 
 \begin{figure}[h]
@@ -542,9 +544,10 @@ is characterized by lots of local minima. Some parameter combinations are also c
     \caption{Gradient landscape.}\label{fig:results:sdtw-grad-landscape}
   \end{subfigure}
   \caption{When observing the \gls{SDTW} loss landscape, we identify very thin and deep valleys containing the global minima.
-This is correlating with the observtion, that \gls{SDTW} was only able to recover very small parameter perturbations.
+This is correlating with the observation, that \gls{SDTW} was only able to recover very small parameter perturbations.
 For larger perturbations, gradients were close to 0, which can be explained by the large loss plateaus visible.}
 \end{figure}
+\mwarning{Caption: ``This is correlating with'' $\to$ ``This correlates with''; ``the global minima'' $\to$ ``the global minimum'' (singular).}
 
 \begin{figure}[h]
   \centering
@@ -560,6 +563,7 @@ For larger perturbations, gradients were close to 0, which can be explained by t
 For example, the local minima are less pronounced than in the \gls{MSE} landscape, even though still present.
 The global minima valleys tend to be less narrow compared to \gls{SDTW}; however, they still tend to be surrounded by large loss plateaus.}
 \end{figure}
+\mwarning{Caption: ``Van-Rossum'' $\to$ ``Van Rossum'' (spelling consistency); ``The global minima valleys'' $\to$ ``The global-minimum valleys''.}
 
 \begin{figure}[h]
   \centering

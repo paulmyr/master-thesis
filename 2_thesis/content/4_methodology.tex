@@ -6,14 +6,17 @@ First, we implement the \gls{AdEx} model in \texttt{Jaxley} as a new \texttt{Cha
 in both a standard formulation and a surrogate-gradient variant whose construction transfers directly to \texttt{Jaxley}'s existing simplified models (\gls{LIF} and Izhikevich).
 Second, we use this implementation to perform gradient-based parameter estimation against synthetic target traces.
 
-The chapter is organised as follows.
+The chapter is organized as follows.
 Section~\ref{sec:method:adex_impl} specifies the \gls{AdEx} dynamics and our discrete-time formulation in \texttt{Jaxley}.
 The surrogate-gradient variant is introduced in \cref{sec:method:surrogate-gradients},
 including the soft reset and the choice of surrogate function.
-We then dive into parameter optimisation (\cref{sec:method:param_opt}), starting with our evaluation metric $\Gamma$ (\cref{sec:method:opt:evaluation-metrics}), followed by the differentiable loss functions we compare (\cref{sec:method:opt:loss}) --- \gls{MSE},
+We then dive into parameter optimization (\cref{sec:method:param_opt}), starting with our evaluation metric $\Gamma$ (\cref{sec:method:opt:evaluation-metrics}), followed by the differentiable loss functions we compare (\cref{sec:method:opt:loss}) --- \gls{MSE},
 the feature-based loss of Guarino et al., and the Van Rossum distance --- and the differentiable approximations required to make the feature-based loss usable for gradient descent.
-\Cref{sec:method:opt:stabilization} details the training-stabilisation techniques used on top of the optimiser (Polyak step-size normalisation, sigmoid parameter reparameterisation, multi-trace optimisation).
-The chapter closes with the \emph{recovery-radius benchmark} (\cref{sec:method:opt:recovery-benchmark}): a paired protocol that varies the initial perturbation distance from a known ground-truth parameter set and measures, for each loss and for two derivative-free baselines (Nelder--Mead on the soft and hard Guarino objectives), how reliably the original parameters are recovered.
+\Cref{sec:method:opt:stabilization} details the training-stabilization techniques used on top of the optimizer (Polyak step-size normalization, sigmoid parameter reparameterization, multi-trace optimization).
+We describe the \emph{recovery-radius benchmark} (\cref{sec:method:opt:recovery-benchmark}):
+a paired protocol that varies the initial perturbation distance from a known ground-truth parameter set and measures,
+for each loss and for two derivative-free baselines (Nelder--Mead on the soft and hard Guarino objectives), how reliably the original parameters are recovered.
+This is followed up by a subthreshold recovery benchmark (\cref{sec:method:opt:subthreshold-benchmark}) to better our understanding of difficulty of the optimization problem and difficulty of gradient propagation through spike events.
 The corresponding results are reported in \cref{ch:results}.
 Finally, we describe our compute environment in \cref{sec:method:compute-environment}.
 
@@ -21,7 +24,7 @@ Finally, we describe our compute environment in \cref{sec:method:compute-environ
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \section{AdEx Model Implementation}\label{sec:method:adex_impl}
-We implement the \gls{AdEx} model as a \texttt{Jaxley} channel, following the formulation by Brette and Gerstner \cite{Brette2005} (see \cref{eq:adex1,eq:adex3}).
+We implement the \gls{AdEx} model as a \texttt{Jaxley} channel, following the formulation by Brette and Gerstner \cite{Brette2005} (see \cref{eq:adex1,eq:adex2,eq:adex3}).
 Unlike \gls{HH}-type channels that contribute currents to a shared voltage solver, simplified models like \gls{AdEx} handle voltage integration directly within their \texttt{update\_states()} method.
 We follow the implementation pattern of \cite{Deistler2025}.
 
@@ -31,10 +34,10 @@ The \gls{AdEx} model consists of two coupled differential equations requiring di
 \textbf{Adaptation current $w$:}
 \Cref{eq:adex2} is a linear dynamic system in $w$, allowing the use of exponential Euler integration.
 It has the analytical solution
-\begin{equation}
+\begin{equation}\label{eq:adaptation-current-integration}
   w(t+\Delta t) = w(t) \cdot e^{-\Delta t / \tau_w} + a(V - E_L)(1 - e^{-\Delta t / \tau_w})
-\end{equation}\label{eq:adaptation-current-integration}
-which gives increased numerical stability compared to e.g. forward euler methods.
+\end{equation}
+which gives increased numerical stability compared to e.g. forward Euler methods.
 
 \textbf{Membrane potential $V$:}
 The exponential term in \cref{eq:adex1} makes this equation nonlinear, requiring numerical integration, for example forward Euler:
@@ -52,15 +55,15 @@ If the threshold is crossed, we apply the reset conditions from \cref{eq:adex3}.
 For standard \texttt{LIF}, \texttt{AdEx} or \texttt{Izhikevich}, this uses \texttt{jax.lax.select()} for conditional assignment.
 In the differentiable variants, we use the continuous formulation described in \cref{sec:method:surrogate-gradients:implementation} for both $V$ and $w$:
 \begin{align}
-    V_{\text{new}} &= \sigma \cdot V_r + (1 - \sigma) \cdot V, \\
-    w_{\text{new}} &= \sigma \cdot (w + b) + (1 - \sigma) \cdot w,
+    V_{\text{new}} &= s \cdot V_r + (1 - s) \cdot V, \\
+    w_{\text{new}} &= s \cdot (w + b) + (1 - s) \cdot w,
 \end{align}
-where $\sigma: V\rightarrow [0,1]$ is the surrogate of the Heaviside function.
+where $s = H(v - v_{\text{th}})$ is the spike indicator (binary in the forward pass; its backward derivative is supplied by the surrogate $\varphi_\beta$).
 
 \subsection{Model Parameters}\label{sec:method:adex:default-parameters}
-\Cref{tab:adex_params} summarises the \gls{AdEx} parameters and their default values.
+\Cref{tab:adex_params} summarizes the \gls{AdEx} parameters and their default values.
 Some parameters have direct physiological counterparts (e.g., $C_m$ or $E_L$) and could technically be measured.
-However, to accurately reproduce neuron spiking behaviour, values can significantly diverge from bio-physical plausible value ranges.
+However, to accurately reproduce neuron spiking behaviour, values can significantly diverge from biophysically plausible value ranges.
 This is expected and accepted when using simplified models, however, increases the demand of fitting strategies.
 
 \begin{table}[t]
@@ -71,7 +74,7 @@ This is expected and accepted when using simplified models, however, increases t
 \toprule
 \textbf{Parameter} & \textbf{Symbol} & \textbf{Default} & \textbf{Unit} & \textbf{Trainable} \\
 \midrule
-Membrane capacitance & $C$ & 200 & pF & Yes\\
+Membrane capacitance & $C_m$ & 200 & pF & Yes\\
 Leak conductance & $g_L$ & 10 & nS & Yes\\
 Leak reversal & $E_L$ & -70 & mV & Yes \\
 Threshold potential & $V_T$ & -50 & mV & Yes\\
@@ -86,10 +89,9 @@ Stimulation current & $I$ & 500 & pA & No \\
 \end{tabular}
 \end{table}
 
-More on trainability of the parameters in %\cref{}
-\footnotetext[2]{The adaption variables are technically trainable exactly like all other parameters.
+More on trainability of the parameters in \cref{sec:results:training}.
+\footnotetext[2]{The adaptation variables are technically trainable exactly like all other parameters.
 However, as we will discuss in \cref{ch:discussion}, the gradient signal was too small and noisy for us to achieve sensible results for these parameters.}
-\itodo{Add result section}
 
 \subsubsection{Point-Neuron Geometry Bridge}\label{sec:method:adex:geometry-bridge}
 
@@ -98,7 +100,7 @@ Jaxley, however, is designed for geometry-aware biophysical simulations and oper
 To bridge this mismatch, we assign a fixed fictitious cylindrical geometry with surface area
 $A = 100\;\mu\text{m}^2$ (radius $= 1\;\mu$m, length $= 50/\pi\;\mu$m) and store the absolute capacitance $C_m$ (in pF) directly in Jaxley's \texttt{capacitance} parameter.
 Why does this work?
-As stated in \cref{sec:adex_impl}, there are two different options on how voltage equations are solved in \texttt{Jaxley}: \texttt{update\_states} and \texttt{compute\_current}.
+As stated in \cref{sec:method:adex_impl}, there are two different options on how voltage equations are solved in \texttt{Jaxley}: \texttt{update\_states} and \texttt{compute\_current}.
 Since \texttt{compute\_current} is set to 0, all internal dynamics are handled entirely in \texttt{update\_states}, which computes
 $\mathrm{d}V/\mathrm{d}t = (-I_\text{leak} + I_\text{exp} - w) / C_m$
 in point-neuron units (pA\,/\,pF\,$=$\,mV/ms).
@@ -109,15 +111,15 @@ With $A = 100\;\mu\text{m}^2$ this simplifies to $I_\text{nA} \times 1000 = I_\t
 The voltage solver then divides by \texttt{capacitance}: $I_\text{pA}\,/\,C_m\;[\text{mV/ms}]$, which is in correct point-neuron units.
 
 Importantly, \textbf{$C_m$ is trainable.}
-Because the geometry is fixed, changing $C_m$ during optimisation only affects the two divisions described above --- exactly the physical role of membrane capacitance.
+Because the geometry is fixed, changing $C_m$ during optimization only affects the two divisions described above --- exactly the physical role of membrane capacitance.
 Therefore no geometry recalculations are needed.
 Conversion complexity is reduced to a simple unit change: $I_\text{nA} = I_\text{pA}\,/\,1000$, no parameter-dependent scaling is required.
 
 \subsection{Implementation Verification}\label{sec:method:adex:verification}
 Before any of the gradient-based experiments make sense, we need to be confident that the forward simulation itself is correct.
-Otherwise, every later observation about loss landscapes, gradients, or training failures would be ambiguous: a real property of gradient-based optimisation, or just a bug in the dynamics?
+Otherwise, every later observation about loss landscapes, gradients, or training failures would be ambiguous: a real property of gradient-based optimization, or just a bug in the dynamics?
 To rule out the latter, we compare our \gls{AdEx} channel against Brian2 \cite{Stimberg2019}, a widely-used and well-tested simulator for spiking neural networks.
-Both simulators are configured (almost\footnote{Brian2 uses the same numerical integration scheme for both ODEs, whereas our AdEx implementation uses forward euler for the voltage equation and exponential euler for the adaption equation. We mitigate an effect of this difference by choosing a small enough time step.}) identically:
+Both simulators are configured (almost\footnote{Brian2 uses the same numerical integration scheme for both ODEs, whereas our AdEx implementation uses forward Euler for the voltage equation and exponential Euler for the adaptation equation. We mitigate an effect of this difference by choosing a small enough time step.}) identically:
 \begin{itemize}
     \item Time step: $\Delta t = 0.01$ ms
     \item Simulation duration: 500 ms
@@ -125,7 +127,7 @@ Both simulators are configured (almost\footnote{Brian2 uses the same numerical i
     \item Initial conditions: $V(0) = V_r$, $w(0) = 0$
 \end{itemize}
 
-We evaluate three parameter configurations from Naud et al.\ \cite{Naud2008} that produce distinct firing patterns:
+We evaluate three parameter configurations from Brette \& Gerstner \cite{Brette2005} and from Naud et al.\ \cite{Naud2008} that produce distinct firing patterns:
 
 \textbf{Tonic spiking}:\\
 Regular spiking without spike-frequency adaptation, serving as a baseline case.
@@ -146,7 +148,7 @@ $a = 2$,
 $b = 60$,
 $I = 500$.
 
-\textbf{Original parameters} \cite{Brette2005}:\\
+\textbf{Original parameters}:\\
 The original parameter set from Brette and Gerstner, demonstrating combined adaptation mechanisms.
 The parameters used are
 $C_m = 281$,
@@ -170,15 +172,15 @@ The actual numbers are reported in \cref{sec:results:verification}.
 We evaluate runtime performance of the AdEx implementation by comparing it to Brian2.
 To establish a fair comparison, we benchmark against the different available runtimes, namely the python environment using \textit{cython} and c++.
 In the last case, the model gets compiled into native c++ code which then is compiled to the target platform.
-We perform all tests on a MacBook Air, see more details in \cref{sec:method:compute-environment}.
+We perform all tests on an Apple MacBook Air (M1), see more details in \cref{sec:method:compute-environment}.
 
 The benchmark is set up as follows:
 we simulate the AdEx equations with the same (tonic) parameters for different simulation lengths.
 Specifically, we time a single point neuron over a sweep of simulation durations ($200$--$5000$\,ms, i.e.\ $8{,}000$--$200{,}000$ integration steps)
 and separate the one-time compile/code-generation cost from the per-run integration walltime, which is the quantity compared.
 Each scenario is performed 20 times for a time step size of $dt = 0.025$.
-Brian2 is using the same numerical scheme for both equations, whereas Jaxley uses forward euler for the voltage equation and
-exponential euler for the adaptation.
+Brian2 is using the same numerical scheme for both equations, whereas Jaxley uses forward Euler for the voltage equation and
+exponential Euler for the adaptation.
 This choice is made, to further speed up the Brian2 simulation.
 Results are presented in \cref{sec:results:performance}.
 
@@ -186,9 +188,9 @@ Results are presented in \cref{sec:results:performance}.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \section{Integration of Surrogate Gradients into Jaxley}\label{sec:method:surrogate-gradients}
-\texttt{Jaxley} is built on top of \texttt{JAX} and leverages its automatic differentiation capabilities for gradient-based parameter optimisation.
+\texttt{Jaxley} is built on top of \texttt{JAX} and leverages its automatic differentiation capabilities for gradient-based parameter optimization.
 Neuron dynamics in \texttt{Jaxley} are defined through \texttt{Channel} classes, which specify three core methods:
-\texttt{update\_states()} for state variable evolution, \texttt{compute\_current()} for membrane current contributions, and \texttt{init\_state()} for initialisation of state variables.
+\texttt{update\_states()} for state variable evolution, \texttt{compute\_current()} for membrane current contributions, and \texttt{init\_state()} for initialization of state variables.
 During simulation, \texttt{JAX} traces these functions to construct a computational graph, enabling automatic gradient computation and backpropagation.
 The discrete reset of \cref{eq:adex3} breaks this graph: as discussed in \cref{sec:bg:sg:vanishing-gradients}, the Heaviside derivative is zero almost everywhere, so gradients through spike events vanish.
 
@@ -205,8 +207,8 @@ to a continuous, differentiable form
 \begin{equation}
     v_{\text{new}} = s \cdot v_{\text{reset}} + (1 - s) \cdot v,
 \end{equation}
-where $s = \sigma(v - v_{\text{th}})$ is the surrogate spike indicator.
-In the forward pass $\sigma$ returns $0$ or $1$ exactly, so this expression is numerically equivalent to the discrete selection above and the recorded spike trace $s(t)\in\{0,1\}$ is binary --- the continuous-blend form exists only so that JAX's \texttt{custom\_vjp} can route a smooth gradient through the reset on the backward pass.
+where $s = H(v - v_{\text{th}})$ is the spike indicator.
+In the forward pass $s$ is $0$ or $1$ exactly (the hard Heaviside $H$), so this expression is numerically equivalent to the discrete selection above and the recorded spike trace $s(t)\in\{0,1\}$ is binary --- the continuous-blend form exists only so that JAX's \texttt{custom\_vjp} can route a smooth gradient (the surrogate derivative $\varphi_\beta$) through the reset on the backward pass.
 
 This approach can easily be applied to the existing \gls{LIF} (\texttt{Fire\-Surrogate}) and Izhikevich models in \texttt{Jax\-ley},
 not only to the newly implemented \gls{AdEx} model (\texttt{AdEx\-Surro\-gate}).
@@ -225,15 +227,15 @@ We pick \texttt{v\_threshold} as the trainable parameter because its expected si
 
 Together, the two checks establish what the implementation is supposed to do:
 the forward pass behaves indistinguishably from the standard \gls{AdEx} model, while the backward pass replaces a structurally zero gradient with a finite one.
-Whether the resulting gradients are \emph{useful} for optimisation --- their magnitude, their support over the voltage range, and their behaviour under long simulation horizons --- is a separate question, and one that the rest of this thesis is largely concerned with.
+Whether the resulting gradients are \emph{useful} for optimization --- their magnitude, their support over the voltage range, and their behaviour under long simulation horizons --- is a separate question, and one that the rest of this thesis is largely concerned with.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\section{Parameter Optimisation}\label{sec:method:param_opt}
-To evaluate the effectiveness of gradient-based optimisation using surrogate gradients, we recover parameter of synthetic voltage traces.
+\section{Parameter Optimization}\label{sec:method:param_opt}
+To evaluate the effectiveness of gradient-based optimization using surrogate gradients, we recover parameter of synthetic voltage traces.
 This way, the ground truth is known, so recovery success is measurable.
-We perform a perturbation protocol, meaning we identify in which distance from the ground truth the optimisation setup can reliably recover the parameters.
+We perform a perturbation protocol, meaning we identify in which distance from the ground truth the optimization setup can reliably recover the parameters.
 A $\Gamma > 0.5$ is measured as a successful recovery.
 
 The full protocol --- scenarios, perturbation grid, and the four methods we compare ---
@@ -243,7 +245,7 @@ is specified in \cref{sec:method:opt:recovery-benchmark}.
 Deistler et al.~\cite{Deistler2025} claim sub-millisecond and sub-millivolt matching for their \gls{HH}-type fits;
 for simplified models against real experimental data this is an unrealistic expectation, and the natural goal is to replicate spike timings as well as possible.
 We therefore evaluate every fit with the coincidence factor $\Gamma$ defined in \cref{eq:gamma} (\cref{sec:rw:benchmarking}), using the conventional precision window $\Delta = 2$\,ms.
-We clip $\Gamma$ to $[-1, 1]$: large negative values arise from non-spiking models and signal only that the optimiser failed to escape its initial state, with no further information beyond that fact.
+We clip $\Gamma$ to $[-1, 1]$: large negative values arise from non-spiking models and signal only that the optimizer failed to escape its initial state, with no further information beyond that fact.
 Because our recovery experiments use synthetic targets generated by the same model family, full recovery yields $\Gamma = 1$;
 this is a stricter bar than Jolivet et al.'s $\Gamma \approx 0.82$--$0.83$ on experimental data (\cref{sec:rw:benchmarking}), which reflects the model--data mismatch that is absent in our setup.
 \itodo{Add that we count $\Gamma$ > 0.5 as a success. Give reasoning why.}
@@ -259,11 +261,11 @@ The remainder of this subsection fixes the implementation details that are speci
 We include the \gls{MSE} loss defined in \cref{eq:MSE} not as a candidate loss for parameter fitting,
 but as a baseline against which the timing-aware losses are compared.
 Its role is to empirically confirm the failure mode argued on theoretical grounds in \cref{sec:bg:loss:categories}:
-that a pointwise loss on raw voltage drives the optimiser toward non-spiking solutions whenever the simulated and target spikes are not perfectly aligned.
+that a pointwise loss on raw voltage drives the optimizer towards non-spiking solutions whenever the simulated and target spikes are not perfectly aligned.
 
 Concretely, the loss is evaluated between the simulated voltage trace $V_{\text{sim}}(t; \theta)$ produced by the AdExSurrogate channel and the target trace $V_{\text{exp}}(t)$,
 sampled at the simulation timestep $\Delta t$ over the full stimulus window $[0, T]$.
-No masking, windowing, or normalisation is applied; both traces enter the loss in millivolts.
+No masking, windowing, or normalization is applied; both traces enter the loss in millivolts.
 
 In contrast to the feature-based and Van Rossum losses discussed below, \gls{MSE} requires no soft approximations on the loss side ---
 the squared difference and the temporal mean are smooth operations.
@@ -274,7 +276,7 @@ uncontaminated by the additional softness hyperparameters that the other losses 
 For the same reason, \gls{MSE} has no tunable hyperparameters of its own:
 any observed failure cannot be attributed to a poor choice of softness, weighting, or kernel parameters,
 and must instead reflect a property of the loss itself.
-The corresponding training results are presented in \cref{sec:results:mse} and \cref{fig:mse-training-results}.
+The corresponding training results are presented in \cref{sec:results:landscape:mse} and \cref{fig:mse-training-results}.
 
 \subsubsection{Feature-Based Loss}\label{sec:method:opt:loss:feature-loss}
 Simplified neuron models are usually not required to perfectly imitate the voltage trace of a neuron --- their main requirement is to faithfully replicate the firing behaviour.
@@ -300,24 +302,34 @@ Standard implementations use hard threshold crossings, which are non-differentia
 To enable gradient-based optimization, we developed soft approximations of the feature extraction operations.
 
 The naming ``soft approximation'' is potentially misleading and warrants up-front clarification: the spike trace itself is never softened.
-The \texttt{AdExSurrogate} channel emits a strictly binary indicator $s(t)\in\{0,1\}$ at every time step (\cref{sec:method:surrogate-gradients:implementation}), so the recorded trace contains real, mass-$1$ spike events\footnote{
-  "Mass" here is borrowed from measure theory / signal processing. A spike train is treated as a sum of point events on the time axis, and each event carries a mass — the integer or real number it contributes to integrals/sums of the trace. }
+The \texttt{AdExSurrogate} channel emits a strictly binary indicator $s(t)\in\{0,1\}$ at every time step (\cref{sec:method:surrogate-gradients:implementation}),
+so the recorded trace contains real, mass-$1$ spike events\footnote{
+"Mass" here is borrowed from measure theory / signal processing.
+A spike train is treated as a sum of point events on the time axis, and each event carries a mass --- the integer or real number it contributes to integrals/sums of the trace.}
 --- there are no fractional spikes anywhere in the forward pass.
 In particular, the spike count $N_{\text{spikes}} = \sum_{t} s(t)$ and the cumulative count $\sum_{\tau\leq t} s(\tau)$ are exact integers.
 
 What is ``soft'' is the \emph{recipe} we use to turn this binary signal into feature values, not the values it produces.
 Concretely, the time of the $n$-th spike could in principle be read off as $\arg\min\{t : \sum_{\tau\leq t} s(\tau) = n\}\cdot\Delta t$,
-but $\arg\min$ is non-differentiable: a small change in $\theta$ leaves the integer index unchanged (then jumps it by one), so the chain-rule derivative through such an operation is zero almost everywhere.
+but $\arg\min$ is non-differentiable: a small change in $\theta$ leaves the integer index unchanged (then jumps it by one),
+so the chain-rule derivative through such an operation is zero almost everywhere.
 We replace this hard lookup with a smooth weighted average over time, gated by a sigmoid-of-cumulative-sum selector (described in detail below).
-On a binary $s(t)$ the selector collapses to $\approx\!1$ at the $n$-th spike's index and $\approx\!0$ elsewhere, so the forward value is essentially identical to the exact spike time; what differs is that the recipe is now a chain of differentiable operations.
+On a binary $s(t)$ the selector collapses to $\approx\!1$ at the $n$-th spike's index and $\approx\!0$ elsewhere,
+so the forward value is essentially identical to the exact spike time; what differs is that the recipe is now a chain of differentiable operations.
 The temperature $\tau$ and sigmoid sharpness $\beta$ control how sharp this selector is; they do not turn $s(t)$ itself into a continuous variable.
-Validity flags (sigmoid gates of the form $\sigma(\beta_v(N_{\text{spikes}}-k+\tfrac{1}{2}))$) follow the same pattern: they are sigmoid-smoothed indicators of integer comparisons, exact in forward but with a non-zero analytical derivative.
+Validity flags (sigmoid gates of the form $\sigma(\beta_v(N_{\text{spikes}}-k+\tfrac{1}{2}))$) follow the same pattern:
+they are sigmoid-smoothed indicators of integer comparisons, exact in forward but with a non-zero analytical derivative.
 
-Differentiability with respect to the model parameters is supplied at exactly one node, the \texttt{custom\_vjp} on $s(t)$: although $s$ is a step function with true derivative zero almost everywhere, \cref{sec:method:surrogate-gradients} substitutes the smooth surrogate kernel $\partial s/\partial v$ during the backward pass.
+Differentiability with respect to the model parameters is supplied at exactly one node, the \texttt{custom\_vjp} on $s(t)$:
+although $s$ is a step function with true derivative zero almost everywhere,
+\cref{sec:method:surrogate-gradients} substitutes the smooth surrogate kernel $\partial s/\partial v$ during the backward pass.
 The chain rule then propagates a finite $\partial\mathcal{L}/\partial\theta$ through the smooth feature recipe and back to the parameters.
-The resulting gradient does not correspond to any finite-difference test of the loss --- the true loss landscape is piecewise constant in $\theta$ and finite differences would return zero.
-It is a surrogate gradient in the sense of Neftci et al.~\cite{Neftci2019}: a useful optimisation direction, formally interpretable as the exact gradient of a smoothed version of the model, but not the true derivative of the staircase loss.
-A consequence of keeping $s(t)$ binary is that the Van~Rossum distance (\cref{sec:method:opt:loss:van-rossum}), which consumes $s(t)$ directly, sees mass-$1$ events on both the simulated and target side, with no per-event mass mismatch.
+The resulting gradient does not correspond to any finite-difference test of the loss ---
+the true loss landscape is piecewise constant in $\theta$ and finite differences would return zero.
+It is a surrogate gradient in the sense of Neftci et al.~\cite{Neftci2019}: a useful optimization direction,
+formally interpretable as the exact gradient of a smoothed version of the model, but not the true derivative of the staircase loss.
+A consequence of keeping $s(t)$ binary is that the Van~Rossum distance (\cref{sec:method:opt:loss:van-rossum}),
+which consumes $s(t)$ directly, sees mass-$1$ events on both the simulated and target side, with no per-event mass mismatch.
 
 For spike timing, we use cumulative sums to identify when the $n$-th spike occurs and compute a weighted average over time.
 Similarly, ISI features are derived from the difference between consecutive soft spike times.
@@ -338,25 +350,25 @@ The two spike trains in \cref{eq:van-rossum} are the binary indicator $s(t)$ pro
 As established in \cref{sec:method:opt:loss:feature-loss}, both are mass-$1$-per-spike sequences, and gradient flow into the parameters is supplied by the \texttt{custom\_vjp} on $s(t)$ rather than by any softening on the loss side.
 Van Rossum is the only loss in our comparison where this is the case --- the convolution with $K$ and the $L^2$ norm are themselves smooth, so no temperature or softness hyperparameter is required to make the path from $s(t)$ to the loss differentiable.
 
-We discretise \cref{eq:van-rossum} on the simulation grid:
+We use the \emph{squared} Van Rossum distance as the loss (following the $\mathcal{L}_{\mathrm{VR}}^{2}$ convention of \cref{eq:van-rossum} and van Rossum~\cite{Rossum2001}; the square avoids a $\surd$ whose only effect is a monotone rescale with a gradient singularity at zero), discretizing \cref{eq:van-rossum} on the simulation grid:
 \begin{equation}\label{eq:vr-discrete}
-    \mathcal{L}_{\mathrm{VR}}(\theta) = \frac{\Delta t}{\tau} \sum_{n=0}^{N-1} \bigl(\,(K * s_{\mathrm{sim}})[n] - (K * s_{\mathrm{exp}})[n]\,\bigr)^{2},
+    \mathcal{L}_{\mathrm{VR}}^{2}(\theta) = \frac{\Delta t}{\tau} \sum_{n=0}^{N-1} \bigl(\,(K * s_{\mathrm{sim}})[n] - (K * s_{\mathrm{exp}})[n]\,\bigr)^{2},
 \end{equation}
 with $K[n] = \exp(-n\,\Delta t / \tau)$ truncated at $5\tau$ (where $K(5\tau) \approx 0.007$).
 Truncation keeps the convolution $O(N\tau/\Delta t)$ per evaluation rather than $O(N^{2})$; it is exact to the displayed precision in all results we report.
 
 To keep the loss responsive in regimes where the simulated cell produces no spikes at all --- in which case \cref{eq:vr-discrete} reduces to a constant determined entirely by the target and provides no parameter-dependent signal --- we optionally add a subthreshold voltage \gls{MAE} term:
 \begin{equation}\label{eq:vr-sub}
-    \mathcal{L}(\theta) = \mathcal{L}_{\mathrm{VR}}(\theta) + \lambda_{\mathrm{sub}} \cdot \frac{1}{N}\sum_{n} \bigl| \min(V_{\mathrm{sim}}[n],\,v_{\mathrm{clamp}}) - \min(V_{\mathrm{exp}}[n],\,v_{\mathrm{clamp}}) \bigr|,
+    \mathcal{L}(\theta) = \mathcal{L}_{\mathrm{VR}}^{2}(\theta) + \lambda_{\mathrm{sub}} \cdot \frac{1}{N}\sum_{n} \bigl| \min(V_{\mathrm{sim}}[n],\,v_{\mathrm{clamp}}) - \min(V_{\mathrm{exp}}[n],\,v_{\mathrm{clamp}}) \bigr|,
 \end{equation}
 clamped above $v_{\mathrm{clamp}} = -40$\,mV so that spike peaks contribute nothing and the term reflects only the subthreshold trajectory.
 $\lambda_{\mathrm{sub}}$ is set to $0$ when we want to study the spike-train objective in isolation, and to a small positive value otherwise.
-The role of this term is identical to that of the spike-count regulariser in the feature-based loss: provide a non-zero gradient on the no-spike plateau so the optimiser is not stuck there before the spike-train term has anything to act on.
+The role of this term is identical to that of the spike-count regularizer in the feature-based loss: provide a non-zero gradient on the no-spike plateau so the optimizer is not stuck there before the spike-train term has anything to act on.
 
 \subsubsection{Soft-DTW and Summary Statistics}\label{sec:method:opt:loss:misc}
 For completeness, we also implemented two further differentiable losses from the \gls{HH}-fitting recipe of Deistler et al.~\cite{Deistler2025}:
 \gls{SDTW}~\cite{Blondel2018} with their temporally-augmented cost $c(x_i, y_j) = |x_i - y_j| + |i - j|$, and the four-statistic \gls{MAE} loss (mean and standard deviation of the voltage trace in the pre-stimulus and stimulus windows) they use for synthetic experiments.
-Neither produced parameter recoveries comparable to the feature-based or spike-train losses on the \gls{AdEx} benchmark, so we mention them here for context and omit them from the analysis in \cref{ch:results}.
+Neither produced parameter recoveries comparable to the feature-based or spike-train losses on the \gls{AdEx} benchmark, so we mention them here for context and omit them from the analysis in \cref{ch:results}.\iwarning{Overstated: \gls{SDTW} is \emph{not} omitted from \cref{ch:results} --- it appears throughout the loss-landscape analysis (\cref{sec:results:landscape} and the appendix figures). Scope this claim to the \emph{recovery benchmark} only.}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -367,44 +379,44 @@ Three properties of the problem make plain stochastic gradient descent unreliabl
 gradient magnitudes vary by several orders of magnitude across parameters because the \gls{AdEx} parameters live on physically different scales (capacitance in pF, time constants in ms, conductances in nS);
 the loss landscape contains large non-spiking plateaus where soft spike-detection terms dominate the gradient signal (\cref{sec:results:landscape});
 and the trainable parameters are bounded by physiologically plausible ranges, so naive updates can step outside the feasible region.
-We address these issues with a small set of stabilisation techniques applied on top of the optimiser, summarised below and combined as listed in \cref{tab:training-params}.
+We address these issues with a small set of stabilization techniques applied on top of the optimizer, summarized below and combined as listed in \cref{tab:training-params}.
 
-\subsubsection{Polyak step-size normalisation}\label{sec:method:opt:stabilization:polyak}
+\subsubsection{Polyak step-size normalization}\label{sec:method:opt:stabilization:polyak}
 Polyak's adaptive step size \cite{Polyak1964} replaces the fixed learning rate $\eta$ with one that depends on the current loss value and gradient norm:
 \begin{equation}
     \theta_{t+1} = \theta_t - \eta \cdot \frac{|\mathcal{L}(\theta_t)|^{\alpha}}{\|\nabla \mathcal{L}(\theta_t)\|^{\beta} + \epsilon} \cdot \nabla \mathcal{L}(\theta_t),
 \end{equation}
 with $\alpha, \beta \in [0,1]$ controlling how strongly the loss and the gradient norm enter.
-For $\alpha = \beta = 1$ this reduces to a normalised gradient step whose magnitude is set by the current loss,
-so the update size shrinks automatically as the optimiser approaches a minimum and grows when far from it.
+For $\alpha = \beta = 1$ this reduces to a normalized gradient step whose magnitude is set by the current loss,
+so the update size shrinks automatically as the optimizer approaches a minimum and grows when far from it.
 
 In our setting Polyak provides two practical benefits: with $\alpha > 0$ step sizes decrease with decreasing loss $|\mathcal{L}|$.
 The $\beta$ variable controls how much of the gradient norm is divided out of the update:
 $\beta=0$ leaves spikes intact (vanilla magnitude), $\beta=1$ fully decouples step size from $|\nabla\mathcal{L}|$.
 The first benefit being automatic annealing when we get close to the global minimum while simultaneously soft capping gradient spikes.
-Note that this does not address magnitude differences between gradient parameters, because all partial differentials are normalised by the same factors.
+Note that this does not address magnitude differences between gradient parameters, because all partial differentials are normalized by the same factors.
 Large gradient spikes in one parameter actually dampen small gradients of other parameters.
 Polyak addresses \emph{temporal} gradient smoothing, not \emph{spatial}.
 
 \subsubsection{Sigmoid parameter transformation}\label{sec:method:opt:stabilization:sigmoid}
-Hard projection of $\theta_t$ back into $[\theta_{\min}, \theta_{\max}]$ after each update introduces two problems for adaptive optimisers:
-the projected portion of the step is discarded while the optimiser's internal state (momentum, second-moment estimates) is updated as if the full step had been taken, causing state-trajectory mismatch;
+Hard projection of $\theta_t$ back into $[\theta_{\min}, \theta_{\max}]$ after each update introduces two problems for adaptive optimizers:
+the projected portion of the step is discarded while the optimizer's internal state (momentum, second-moment estimates) is updated as if the full step had been taken, causing state-trajectory mismatch;
 and in multi-parameter updates the projection alters the descent direction in a way that depends on the bounds rather than on the loss.
 Following the transform pattern provided by \texttt{Jaxley}~\cite{Deistler2025},
-we instead reparameterise each bounded parameter through a sigmoid,
+we instead reparameterize each bounded parameter through a sigmoid,
 \begin{equation}
     \theta = \theta_{\min} + (\theta_{\max} - \theta_{\min}) \cdot \sigma(\tilde{\theta}),
 \end{equation}
-and optimise in the unconstrained space $\tilde{\theta}\in\mathbb{R}$.
+and optimize in the unconstrained space $\tilde{\theta}\in\mathbb{R}$.
 Bounds are then enforced implicitly --- $\theta$ can never leave $[\theta_{\min},\theta_{\max}]$ ---
 and the gradient with respect to $\tilde{\theta}$ remains finite everywhere, including at the boundary,
-so the optimiser keeps receiving signal as $\theta$ approaches a bound rather than having it discarded by a projection step.
-A side effect is that gradients are smallest near the bounds, which acts as an implicit bias toward central values within each interval.
+so the optimizer keeps receiving signal as $\theta$ approaches a bound rather than having it discarded by a projection step.
+A side effect is that gradients are smallest near the bounds, which acts as an implicit bias towards central values within each interval.
 However, this introduces a soft bias and hidden hyperparameters ($\theta_{\min}, \theta_{\max}$) for each parameter.
 Changing these can drastically affect convergence performance.
-Sensitivity to bound choices is common in bounded optimisation, but the sigmoid amplifies it.
+Sensitivity to bound choices is common in bounded optimization, but the sigmoid amplifies it.
 
-\subsubsection{Multi-trace optimisation}\label{sec:method:opt:stabilization:multi-trace}
+\subsubsection{Multi-trace optimization}\label{sec:method:opt:stabilization:multi-trace}
 Single-trace fitting (especially on experimental data) is underdetermined: many parameter combinations produce the same firing pattern under one stimulus protocol but disagree under others.
 To exploit this, we extend the loss to a sum over $K$ stimulus protocols sharing the same parameters,
 \begin{equation}
@@ -414,36 +426,40 @@ where $\{I_k\}$ is a fixed set of step currents at different amplitudes.
 The averaged gradient combines temporal credit assignment from regimes that elicit spikes with subthreshold information from regimes that do not,
 constraining adaptation parameters ($a$, $b$, $\tau_w$) that are otherwise weakly identifiable from a single trace.
 
-Multi-trace optimisation was implemented but is not used in the recovery benchmark of \cref{sec:method:opt:recovery-benchmark}.
+Multi-trace optimization was implemented but is not used in the recovery benchmark of \cref{sec:method:opt:recovery-benchmark}.
 Two reasons: it multiplies simulation cost by $K$ at every gradient step, which made the per-trial budget incompatible with the sweep size we wanted to run;
-and the averaged loss is fragile when one of the $K$ stimulation regimes drives the model into a non-spiking or numerically chaotic regime, in which case a single trace can dominate $\nabla\mathcal{L}_{\mathrm{multi}}$ and overwhelm signal from the others.
-Both issues are addressable — trace selection or per-trace loss weighting for the second, vmap-batched simulation for the first ---
-neither was within the scope of this thesis.
-We expect this technique to be necessary rather than optional once the target is experimental data, where ground-truth parameters are not available to confirm recovery and identifiability must come entirely from the loss.
+and the averaged loss is fragile when one of the $K$ stimulation regimes drives the model into a non-spiking or numerically chaotic regime,
+in which case a single trace can dominate $\nabla\mathcal{L}_{\mathrm{multi}}$ and overwhelm signal from the others.
+Both issues are addressable in theory: trace selection or per-trace loss weighting for the second, vmap-batched simulation for the first.
+Neither was within the scope of this thesis.
+We expect this technique to be necessary rather than optional once the target is experimental data,
+where ground-truth parameters are not available to confirm recovery and identifiability must come entirely from the loss.
 
-\subsubsection{Standard regularisers}\label{sec:method:opt:stabilization:misc}
-We also evaluated the more common stabilisers --- gradient-norm clipping and exponential learning-rate decay ---
+\subsubsection{Standard regularizers}\label{sec:method:opt:stabilization:misc}
+We also evaluated the more common stabilizers --- gradient-norm clipping and exponential learning-rate decay ---
 as drop-in alternatives to Polyak when the latter is disabled.
 These were ultimately not retained in the reported configurations (\cref{tab:training-params})
-because, on the diagnoses summarised in \cref{sec:results:landscape} and \cref{ch:discussion},
+because, on the diagnoses summarized in \cref{sec:results:landscape} and \cref{ch:discussion},
 clipping and decay only modulate the magnitude of the update and cannot recover information that is already lost on the non-spiking plateau.
 
 \subsection{Recovery-Radius Benchmark}\label{sec:method:opt:recovery-benchmark}
-The training notebooks (\cref{sec:results:positive-example} and the per-loss subsections of \cref{ch:results}) establish that gradient-based optimisation with surrogate gradients and Polyak step-size normalisation \emph{can} recover \emph{some} \gls{AdEx} membrane parameters in some configurations.\mtodo{Does this still need an introduction in the methodology section?}
+The training notebooks (\cref{sec:results:positive-example} and the per-loss subsections of \cref{ch:results}) establish that
+gradient-based optimization with surrogate gradients and Polyak step-size normalization \emph{can} recover \emph{some} \gls{AdEx} membrane parameters in some configurations.
 What they do not establish is \emph{how reliable} the recovery is, or how it compares against derivative-free baselines on the same target.
-A worked example shows what the optimiser does at one operating point;
-to draw conclusions about gradient-based fitting as a method, we need a protocol that varies the difficulty of the recovery task systematically and that compares methods on matched problem instances.
+A worked example shows what the optimizer does at one operating point;
+to draw conclusions about gradient-based fitting as a method, we need a protocol that varies the difficulty of the recovery task systematically
+and that compares methods on matched problem instances.
 This subsection specifies that protocol; the corresponding results are reported in \cref{sec:results:baseline}.
 
 \subsubsection{Protocol}\label{sec:method:opt:recovery-benchmark:protocol}
 We want to observe recovery behaviour in different spiking regimes.
 For that reason, we used three scenarios: tonic, adaptation and initial bursting --- each corresponding to one of the Naud reference parameter sets~\cite{Naud2008}.
 We treat the ground-truth parameter vector $\theta^{*}\in\mathbb{R}^{|\theta|}$ as the recovery target and generate a target voltage trace by simulating the validated \gls{AdEx} channel of \cref{sec:method:adex_impl} under a fixed step current.
-Then, we construct a family of perturbed initialisations
+Then, we construct a family of perturbed initializations
 \begin{equation}\label{eq:perturb}
     \theta_0(\delta, k) \;=\; \mathrm{clip}_{[\theta_{\min},\theta_{\max}]}\!\Bigl( \theta^{*} + \delta \cdot u_k \odot (\theta_{\max} - \theta_{\min}) \Bigr),
 \end{equation}
-where $u_k\in\mathbb{S}^{|\theta|-1}$ are unit vectors drawn uniformly on the sphere (Gaussian sampling followed by $L^{2}$-normalisation), $\delta$ is a relative perturbation scale, and the elementwise product $\odot$ with $(\theta_{\max}-\theta_{\min})$ rescales each parameter to its bound width so that $\delta$ has the same meaning across heterogeneous units (pF, nS, mV, ms).
+where $u_k\in\mathbb{S}^{|\theta|-1}$ are unit vectors drawn uniformly on the sphere (Gaussian sampling followed by $L^{2}$-normalization), $\delta$ is a relative perturbation scale, and the elementwise product $\odot$ with $(\theta_{\max}-\theta_{\min})$ rescales each parameter to its bound width so that $\delta$ has the same meaning across heterogeneous units (pF, nS, mV, ms).
 The clip operation handles the case where a perturbed component falls outside its parameter bounds.
 
 For every $(\text{scenario}, \delta, k)$ we run each method from $\theta_0(\delta, k)$ to obtain a recovered parameter vector $\hat\theta$, and report the coincidence factor $\Gamma(\hat\theta)$ (\cref{eq:gamma}, $\Delta = 2$\,ms) computed on a clean (non-surrogate) forward simulation at $\hat\theta$.
@@ -455,44 +471,43 @@ the \emph{recovery radius} of a method is then the largest $\delta$ for which $P
 The benchmark deliberately fixes a number of choices to keep the number of confounded factors manageable.
 
 Trainable parameters are restricted to the six membrane parameters $\{C_m, g_L, E_L, V_T, \Delta_T, V_r\}$.
-The adaptation parameters $\{a, b, \tau_w\}$ are held at their ground-truth values during optimisation;
+The adaptation parameters $\{a, b, \tau_w\}$ are held at their ground-truth values during optimization;
 we were not able to fit them well (\cref{sec:results:training}) in any single-trace step-current experiments.
 In principle these parameters are observable through dedicated subthreshold ramps and periodic spike-evoking pulses~\cite{Brette2005}, but those stimuli are absent from the protocol used here.
 By treating them as out-of-scope here, we can investigate what gradient-based fitting can do for membrane parameters.
 
-Targets are synthetic: ground-truth and recovered parameters share the same forward model, so any failure to recover is attributable to the loss function and the optimiser rather than to model--data mismatch.
+Targets are synthetic: ground-truth and recovered parameters share the same forward model, so any failure to recover is attributable to the loss function and the optimizer rather than to model--data mismatch.
 
 Stimuli are single step currents (5\,ms delay, 90\,ms duration, 100\,ms total simulation, $\Delta t = 0.025$\,ms), matching the configuration used in the per-loss training notebooks so that the benchmark and the worked examples speak about the same regime.
-Multi-trace optimisation, although described in \cref{sec:method:opt:stabilization:multi-trace}, is held out of this benchmark due to the reasons described above.
+Multi-trace optimization, although described in \cref{sec:method:opt:stabilization:multi-trace}, is held out of this benchmark due to the reasons described above.
 
 \subsubsection{Methods}\label{sec:method:opt:recovery-benchmark:methods}
 We compare five methods (\cref{tab:training-params}), chosen so that the comparison isolates three questions: \emph{which differentiable loss best supports gradient-based recovery}, \emph{how a strong derivative-free baseline performs on the most informative of those losses}, and \emph{whether the differentiable approximations introduced for the gradient methods cost the derivative-free baseline anything in turn}.
-The three gradient methods (\texttt{grad\_mse}, \texttt{grad\_guarino}, \texttt{grad\_vanrossum}) share the same Polyak optimiser configuration, surrogate kernel, and parameter reparameterisation;
-they differ only in the loss they minimise.
+The three gradient methods (\texttt{grad\_mse}, \texttt{grad\_guarino}, \texttt{grad\_vanrossum}) share the same Polyak optimizer configuration, surrogate kernel, and parameter reparameterization;
+they differ only in the loss they minimize.
 The fourth method (\texttt{nm\_guarino}) runs Nelder--Mead on the soft Guarino objective, evaluating the same loss function as \texttt{grad\_guarino} but ignoring its gradient.
 This pairing makes the gradient-vs-derivative-free comparison a like-for-like contrast on a single loss surface, rather than a comparison of two methods that also differ in their objective.
 The fifth method (\texttt{nm\_guarino\_hard}) runs Nelder--Mead on the \emph{hard-feature} Guarino objective: the eight features are computed by exact threshold crossings on the simulated and target traces, with no temperature, sigmoid sharpness, or soft validity gates.
 This is the loss Guarino et al.~\cite{Guarino2025} themselves use with an evolutionary-algorithm pipeline;
 including it lets us separate \emph{the cost of soft-feature approximations to the derivative-free baseline} from \emph{the cost of the surrogate gradient to the gradient methods}, which the soft \texttt{nm\_guarino} alone cannot do.
 
-\subsubsection{Paired directions}
-\itodo{should this really be it's own subsubsection?}
+\subsubsection{Paired directions, grid and sample sizes}\label{sec:method:opt:recovery-benchmark:grid}
 Within a scenario, a single set of $N_{\text{dir}} = 30$ unit-sphere directions is drawn once from a fixed RNG seed and reused across all $(\delta, \text{method})$ cells;
-the same direction $u_k$ therefore generates the initialisation $\theta_0(\delta, k)$ at every $\delta$, and every method is evaluated on that identical initialisation.
+the same direction $u_k$ therefore generates the initialization $\theta_0(\delta, k)$ at every $\delta$, and every method is evaluated on that identical initialization.
 Cross-method comparisons at fixed $(\text{scenario}, \delta, k)$ are therefore matched on the underlying perturbation:
-when one method succeeds and another fails on the same direction, this is a per-instance difference in optimisation behaviour rather than a sample-variance artefact between independent direction sets.
+when one method succeeds and another fails on the same direction, this is a per-instance difference in optimization behaviour and no sampling artefact.
 
-\subsubsection{Grid and sample sizes}\label{sec:method:opt:recovery-benchmark:grid}
-We use $\delta \in {0.02, 0.05, 0.1, 0.2, 0.4, 0.8}$, spanning from near-recovery ($\sim$2\% of bound width, no clipping) to perturbations large enough that most initialisations are pinned to at least one parameter bound ($\sim$90\% of runs at $\delta = 0.8$; see \cref{tab:clipping}).
+We use $\delta \in \{0.02, 0.05, 0.1, 0.2, 0.4, 0.8\}$, spanning from near-recovery ($\sim$2\% of bound width, no clipping)
+to perturbations large enough that most initializations are pinned to at least one parameter bound ($\sim$90\% of runs at $\delta = 0.8$; see \cref{tab:clipping}).
 The headline curves should be interpreted as basin-of-attraction estimates at small $\delta$ and as feasibility-projected recovery at large $\delta$.
 
 \begin{table}[t]
   \centering
-  \caption{Fraction of recovery-benchmark initialisations with at
+  \caption{Fraction of recovery-benchmark initializations with at
   least one parameter clipped to a bound, as a function of
   perturbation scale $\delta$. Averages are over the 90 runs per
   $\delta$ (3 scenarios $\times$ 30 directions). At large $\delta$
-  most initialisations lie on a face of the feasibility box rather
+  most initializations lie on a face of the feasibility box rather
   than on the sphere of radius $\delta$ around $\theta^{*}$; the
   headline curves should be read as basin-of-attraction estimates
   at small $\delta$ and as feasibility-projected recovery at large
@@ -513,35 +528,46 @@ The headline curves should be interpreted as basin-of-attraction estimates at sm
   \end{tabular}
 \end{table}
 
-Three scenarios (\texttt{tonic}, \texttt{adaptation}, \texttt{initial\_bursting}) cover the qualitatively distinct firing patterns over which an \gls{AdEx} fit must generalise.
+Three scenarios (\texttt{tonic}, \texttt{adaptation}, \texttt{initial\_bursting}) cover the qualitatively distinct firing patterns over which an \gls{AdEx} fit must generalize.
 Total: $5 \times 3 \times 6 \times 30 = 2700$ runs per benchmark execution.
 For each $(\text{scenario}, \delta)$ tuple we compare $\Gamma$ distributions between methods using the two-sample Kolmogorov--Smirnov test on the $N_{\text{dir}} = 30$ recovered $\Gamma$ values per method.
 
 \subsection{Subthreshold Recovery Benchmark}\label{sec:method:opt:subthreshold-benchmark}
-The recovery-radius benchmark of \cref{sec:method:opt:recovery-benchmark} entangles two things that are hard to separate after the fact: the difficulty of the optimisation problem, and the difficulty of getting any gradient at all through the discrete spike mechanism.
+The recovery-radius benchmark of \cref{sec:method:opt:recovery-benchmark} entangles two things that are hard to separate after the fact:
+the difficulty of the optimization problem, and the difficulty of getting any gradient at all through the discrete spike mechanism.
 A failure there could reflect either.
 To isolate the second factor we run a companion benchmark in the \emph{non-spiking} regime, where the surrogate gradient never activates because no threshold crossing occurs.
-Below rheobase the adaptation and spike parameters drop out of the dynamics and only three parameters shape the voltage trace --- the membrane capacitance $C_m$, the leak reversal $E_L$ and the leak conductance $g_L$ --- so the task reduces to a clean three-parameter regression on a smooth voltage trace, with no custom-VJP node anywhere on the path from parameters to loss.
-This lets us ask a sharper question than the spiking benchmark can: setting the spike-credit-assignment problem aside entirely, does gradient descent on the raw \gls{MSE} loss actually behave worse than a derivative-free optimiser?
+In the subthreshold regime, spike and adaptation parameters don't contribute to the dynamics.
+Only three parameters shape the voltage trace --- the membrane capacitance $C_m$, the leak reversal $E_L$ and the leak conductance $g_L$.
+The task reduces to a three-parameter regression on a smooth voltage trace.
+Specifically, no custom-VJP (surrogate gradients) anywhere on the path from parameters to loss.
+This lets us ask a sharper question than the spiking benchmark can:
+with all spike-related problem aside, does gradient descent on the raw \gls{MSE} loss actually behave worse than a derivative-free optimizer?
 
 The construction reuses the perturbation machinery of \cref{sec:method:opt:recovery-benchmark} with three changes.
-First, the stimulus is a subthreshold step ($100$\,pA, below rheobase; $30$\,ms pre-stimulus baseline followed by a $100$\,ms step, $\Delta t = 0.025$\,ms), and a non-spiking guard rejects and resamples any perturbed ground truth whose target trace crosses threshold, so every scenario stays in the subthreshold regime by construction.
-Second, all \gls{AdEx} parameters are still perturbed to build a realistic unknown ground truth (\cref{sec:method:opt:recovery-benchmark}), but only $\{C_m, E_L, g_L\}$ are made trainable; every fit starts from the same fixed initialisation (the tonic subthreshold values with the spike parameters set to non-spiking defaults).
-Third, the two methods compared are gradient descent (Adam, learning rate $0.2$, sigmoid parameter transform) and Nelder--Mead, both minimising the identical \gls{MSE} voltage loss, and both capped at the same budget of $25$ loss evaluations --- one Adam step (a forward and backward pass) against one Nelder--Mead function evaluation.
-Because a gradient step is more expensive than a bare loss evaluation, wall-clock time rather than evaluation count is the fair cost axis.
+First, the stimulus is a subthreshold step ($100$\,pA; $30$\,ms pre-stimulus baseline followed by a $100$\,ms step, $\Delta t = 0.025$\,ms),
+and a non-spiking guard rejects and resamples any perturbed ground truth whose target trace crosses threshold.
+In other words: we regenerate and disregard ground truths as long as they contain any spiking behaviour.
+This way every scenario stays in the subthreshold regime by construction.
+Second, all \gls{AdEx} parameters are still perturbed to build a realistic unknown ground truth (\cref{sec:method:opt:recovery-benchmark}),
+but only $\{C_m, E_L, g_L\}$ are made trainable.
+Every fit starts from the same fixed initialization (the tonic subthreshold values with the spike parameters set to non-spiking defaults).
+Third, the two methods compared are gradient descent (Adam, learning rate $0.2$, sigmoid parameter transform) and Nelder--Mead.
+Both minimize the identical \gls{MSE} voltage loss, both are capped at the same budget of $25$ loss evaluations: one Adam step against one Nelder--Mead function evaluation.
 A run counts as converged when a clean, non-surrogate re-simulation at the fitted parameters reaches an \gls{MSE} of $0.1$\,mV$^2$ or below.
 
-We run one base parameter set (\texttt{tonic}) over the perturbation grid $\delta\in\{0.1,0.2,0.3,0.4\}$ with $50$ random directions each, giving $200$ paired scenarios in which both optimisers fit the same target from the same initialisation.
-Because the comparison is fully paired on the scenario, we report paired statistics: a Wilcoxon signed-rank test on each continuous metric (final loss, parameter-recovery error, evaluations-to-tolerance, wall-clock time) and a McNemar test on the binary converged/not outcome.
+We run one base parameter set (\texttt{tonic}) over the perturbation grid $\delta\in\{0.1,0.2,0.3,0.4\}$ with $50$ random directions each,
+giving $200$ paired scenarios in which both optimizers fit the same target from the same initialization.
+Because the comparison is fully paired on the scenario, we report paired statistics:
+a Wilcoxon signed-rank test on each continuous metric (final loss, parameter-recovery error, evaluations-to-tolerance, wall-clock time)
+and a McNemar test on the binary converged/not outcome.
 Runs that never reach the tolerance within the shared budget are right-censored to the budget rather than discarded, so the speed comparison also credits the method that converges more often.
 The results are reported in \cref{sec:results:subthreshold}.
 
 \section{Compute environment}\label{sec:method:compute-environment}
-All benchmark and verification runs are executed on a single MacBook Pro (Apple Silicon) with JAX configured to the CPU backend (\texttt{jax\_platform\_name="cpu"}) for reproducibility across machines without an accelerator;
+All benchmark and verification runs are executed on a single Apple MacBook Air (M1) with JAX configured to the CPU backend (\texttt{jax\_platform\_name="cpu"}) for reproducibility across machines without an accelerator;
 gradient methods complete in $\sim 1$\,s per run after \gls{JIT} warm-up, Nelder--Mead in $\sim 5$--$10$\,s per run.
-The hard-feature variant \texttt{nm\_guarino\_hard} runs unjitted on every function evaluation (the spike-detection step uses host-side numpy), but a single forward simulation amortises this so the per-run wall time stays in the same range as the soft NM variant.
+The hard-feature variant \texttt{nm\_guarino\_hard} runs unjitted on every function evaluation (the spike-detection step uses host-side numpy), but a single forward simulation amortizes this so the per-run wall time stays in the same range as the soft NM variant.
 Total benchmark wall time is approximately $2$\,h.
 The hyperparameters in \cref{tab:training-params} are the configurations validated in the per-loss training notebooks of \cref{sec:results:training};
 no per-scenario tuning is applied within the benchmark.
-
-\todo{Mention Hyperparameter Sweep Setup?}

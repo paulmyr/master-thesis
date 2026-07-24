@@ -1,43 +1,43 @@
 \chapter{Related Work}\label{ch:relwork}
 
 Simplified neuron models were originally a necessity: computing resources were too limited for large-scale simulations with detailed ion-channel models.
-As hardware improved, focus shifted to biophysically detailed \gls{HH}-type models, most notably through the Blue Brain Project \cite{VanGeit2016} and the Human Brain Project.
+As hardware improved, focus shifted to biophysically detailed \gls{HH}-type models, most notably through the Blue Brain Project \cite{VanGeit2016} and the Human Brain Project\cite{Amunts2016}.
 In recent years, however, interest in simplified models resurged, driven by two developments: the use of spiking neurons in machine learning \cite{Neftci2019} and the ambition to simulate brain-scale networks where computational efficiency remains essential \cite{Tesler2024}.
 
 \section{Parameter Estimation for Neuron Models}\label{sec:rw:param-estimation}
 
 \subsection{Derivative-free Methods}
-Simplified neuron models like the \gls{AdEx} contain parameters (e.g.\ $a$, $b$, $\tau_w$) that lack direct physiological counterparts and must therefore be estimated through optimisation.
+Simplified neuron models like the \gls{AdEx} contain parameters (e.g.\ $a$, $b$, $\tau_w$) that lack direct physiological counterparts and must therefore be estimated through optimization.
 Van Geit et al.\ \cite{VanGeit2008} survey the landscape of automated parameter search methods for neuron models, ranging from evolutionary strategies to simulated annealing.
 
-BluePyOpt \cite{VanGeit2016} operationalised multi-objective evolutionary optimisation for neuroscience, becoming the most widely used tool for automated parameter fitting.
-It wraps the DEAP library, providing access to IBEA, NSGA-II, CMA-ES and particle swarm optimisation, and computes fitness using the eFEL (Electrophysiology Feature Extraction Library) to compare features extracted from simulated and recorded voltage traces.
+BluePyOpt \cite{VanGeit2016} operationalized multi-objective evolutionary optimization for neuroscience, becoming the most widely used tool for automated parameter fitting.
+It wraps the DEAP library, providing access to IBEA, NSGA-II, CMA-ES and particle swarm optimization, and computes fitness using the eFEL (Electrophysiology Feature Extraction Library) to compare features extracted from simulated and recorded voltage traces.
 BluePyOpt treats each feature as a separate objective, enabling Pareto-front-based selection without requiring a single scalar loss function.
-However, being population-based, it requires hundreds to thousands of forward simulations per optimisation run.
+However, being population-based, it requires hundreds to thousands of forward simulations per optimization run.
 
-For the \gls{AdEx} model specifically, Mar\'in et al.\ \cite{Marin2020} used genetic algorithms and Cruz et al.\ \cite{Cruz2021} applied Teaching-Learning-Based Optimisation (TLBO) and multi-state single-agent stochastic search (MSASS) to fit \gls{AdEx} parameters to voltage-clamp recordings, demonstrating that derivative-free methods can successfully recover \gls{AdEx} parameters.
+For the \gls{AdEx} model specifically, Mar\'in et al.\ \cite{Marin2020} used genetic algorithms and Cruz et al.\ \cite{Cruz2021} applied Teaching-Learning-Based Optimization (TLBO) and multi-state single-agent stochastic search (MSASS) to fit \gls{AdEx} parameters to voltage-clamp recordings, demonstrating that derivative-free methods can successfully recover \gls{AdEx} parameters.
 Guarino et al.\ \cite{Guarino2025} took a different approach: they extracted eight electrophysiological features (time to first, second, third and last spike, inverse of first and last \gls{ISI}, firing frequency, and voltage at stimulus end) and performed parameter space exploration using Sobol quasi-random sequences to sample candidate models.
 Each model is ranked by the sum of relative errors across all features, with a penalty of $+3$ for missing features (e.g.\ when a non-spiking model cannot produce spike times).
-Their work demonstrates that feature-based fitting can succeed for the \gls{AdEx} model across seven neuron types and five brain regions, but relies on brute-force search rather than gradient-based optimisation and does not evaluate using the coincidence factor $\Gamma$.
+Their work demonstrates that feature-based fitting can succeed for the \gls{AdEx} model across seven neuron types and five brain regions, but relies on brute-force search rather than gradient-based optimization and does not evaluate using the coincidence factor $\Gamma$.
 
 \subsection{Gradient-based Methods}\label{sec:rw:param-estimation:gbmethod}
 Using gradient descent for parameter fitting requires that the entire computational path --- from parameters through simulation to loss --- is differentiable.
 For \gls{HH}-type models, this is inherently the case: the ion channel dynamics are described by smooth differential equations with no discontinuities.
-Jones et al.\ \cite{Jones2024} demonstrated that gradient-based methods can efficiently optimise ODE-based neuron models using automatic differentiation.
-Hertag et al.\ \cite{Hertag2011} developed an analytical approximation to the \gls{AdEx} model to speed up computations, though this sacrifices the model's full expressive power.
+Jones et al.\ \cite{Jones2024} demonstrated that gradient-based methods can efficiently optimize ODE-based neuron models using automatic differentiation.
+Hertäg et al.\ \cite{Hertag2011} developed an analytical approximation to the \gls{AdEx} model to speed up computations, though this sacrifices the model's full expressive power.
 
 Deistler et al.\ \cite{Deistler2025} developed \texttt{Jaxley}, a \texttt{JAX}-based simulator that enables gradient descent for biophysical models at scale.
 They fitted single-neuron models with up to 1,390 parameters and trained networks with 100,000 parameters.
-On synthetic data, gradient descent required only $\sim$9 optimisation steps (median across runs) to find parameter sets matching the ground truth, while the IBEA genetic algorithm needed a similar number of generations with ten simulations each --- making gradient descent roughly an order of magnitude more sample-efficient.
-On experimental recordings from the Allen Cell Types Database, 1,000 parallelised gradient descent runs on a GPU produced fits that closely matched recorded voltage traces.
+On synthetic data, gradient descent required only $\sim$9 optimization steps (median across runs) to find parameter sets matching the ground truth, while the IBEA genetic algorithm needed a similar number of generations with ten simulations each --- making gradient descent roughly an order of magnitude more sample-efficient.
+On experimental recordings from the Allen Cell Types Database, 1,000 parallelized gradient descent runs on a GPU produced fits that closely matched recorded voltage traces.
 However, \texttt{Jaxley} operates exclusively on \gls{HH}-type models.
 Simplified models with discrete reset mechanisms (Section~\ref{sec:bg:surrogate-gradients}) break the differentiability assumption and are not supported for gradient-based fitting.
 
 \subsection{Simulation-based Inference}
-A third paradigm avoids optimisation entirely: simulation-based inference (SBI) uses neural density estimators to approximate the posterior distribution $p(\theta | \mathbf{x})$ over parameters given observed data.
+A third paradigm avoids optimization entirely: simulation-based inference (SBI) uses neural density estimators to approximate the posterior distribution $p(\theta | \mathbf{x})$ over parameters given observed data.
 Gon\c{c}alves et al.\ \cite{Goncalves2020} developed Sequential Neural Posterior Estimation (SNPE), which trains a deep neural network on simulated data to learn the mapping from observations (or summary statistics) to the full posterior.
 Unlike point-estimate methods, SNPE captures the complete space of data-consistent parameters, including parameter degeneracies and multimodal solutions.
-It is amortised: after an expensive initial training phase, inference on new recordings is nearly instantaneous.
+It is amortized: after an expensive initial training phase, inference on new recordings is nearly instantaneous.
 Critically, SNPE treats the simulator as a black box and can therefore be applied to non-differentiable models including simplified spiking neurons.
 It comes from the same research group as \texttt{Jaxley} (Macke lab) and represents the Bayesian counterpart to the gradient-based approach.
 
@@ -67,36 +67,36 @@ The approach is restricted to neuron models with closed-form between-spike solut
 
 \section{Benchmarking Neuron Models}\label{sec:rw:benchmarking}
 
-Comparing the quality of neuron model fits across studies requires a standardised evaluation metric.
+Comparing the quality of neuron model fits across studies requires a standardized evaluation metric.
 Jolivet et al.\ \cite{Jolivet2008} introduced the coincidence factor $\Gamma$ as
 a measurement of the fraction of coincident spikes between a model and a reference recording within a temporal precision window $\Delta$ ($2$~ms in the original paper), corrected for chance:
 \begin{equation}\label{eq:gamma}
   \Gamma = \frac{N_{\text{coinc}} - \langle N_{\text{coinc}} \rangle}{\tfrac{1}{2}(N_{\text{model}} + N_{\text{data}})} \cdot \frac{1}{1 - 2 f \Delta}
 \end{equation}
 where $N_{\text{coinc}}$ is the number of coincident spikes within $\pm\Delta$, $\langle N_{\text{coinc}} \rangle$ is the expected number of coincidences under a Poisson model with the same firing rate (chance level), and $f$ is the model firing rate.
-The factor $1 - 2 f \Delta$ normalises $\Gamma$ such that $\Gamma = 1$ corresponds to a perfect match and $\Gamma = 0$ to chance-level performance.
+The factor $1 - 2 f \Delta$ normalizes $\Gamma$ such that $\Gamma = 1$ corresponds to a perfect match and $\Gamma = 0$ to chance-level performance.
 
-In their benchmark, Jolivet et al.\ evaluated several simplified neuron models fitted using the Nelder-Mead simplex algorithm.
+In their benchmark, Jolivet et al.\ evaluated several simplified neuron models fitted using the Nelder--Mead simplex algorithm.
 The best-performing models --- including the \gls{AdEx} --- achieved $\Gamma \approx 0.82$--$0.83$ on held-out test data \cite{Jolivet2008}, establishing a concrete performance target for neuron model fitting.
 These results demonstrate that simplified models \emph{can} reproduce experimental spike trains with high fidelity when their parameters are fitted appropriately.
 
 The precision parameter $\Delta$ in $\Gamma$ controls the temporal tolerance for counting coincident spikes: small $\Delta$ requires near-exact spike alignment, while large $\Delta$ tolerates timing errors.
-This mirrors the role of the time constant $\tau$ in the Van Rossum distance (Section~\ref{sec:bg:loss:categories}), where small $\tau$ emphasises temporal coding and large $\tau$ emphasises rate coding.
+This mirrors the role of the time constant $\tau$ in the Van Rossum distance (Section~\ref{sec:bg:loss:categories}), where small $\tau$ emphasizes temporal coding and large $\tau$ emphasizes rate coding.
 In both metrics, a tolerance parameter ($\Delta$ or $\tau$) sets how strictly spike times must align to count as a match.
 
 \section{Loss Functions for Neuron Model Fitting}\label{sec:rw:loss}
 
-The choice of loss function is critical for any optimisation approach, but becomes especially consequential for gradient-based methods, where the loss determines not only the optimisation target but also the gradient direction.
+The choice of loss function is critical for any optimization approach, but becomes especially consequential for gradient-based methods, where the loss determines not only the optimization target but also the gradient direction.
 
 \subsection{Feature-Based Losses}
 Guarino et al.\ \cite{Guarino2025} define a loss based on the relative error between data-derived and model-derived electrophysiological features (the eight features listed in \cref{sec:rw:param-estimation}), with a fixed penalty for features that are present in the data but absent from the simulation (e.g.\ a non-spiking model cannot produce spike times).
 This formulation works well with derivative-free search, but the features themselves are not differentiable: spike detection requires threshold crossings, and spike counting is discrete.
-Adapting these features for gradient-based optimisation requires differentiable approximations (soft threshold, soft spike count), which we investigate in this work.
+Adapting these features for gradient-based optimization requires differentiable approximations (soft threshold, soft spike count), which we investigate in this work.
 
 \subsection{Summary Statistics and Soft-DTW}
 Deistler et al.\ \cite{Deistler2025} use two complementary loss functions for fitting \gls{HH}-type models.
-For synthetic experiments, they define four differentiable summary statistics: the mean and standard deviation of the voltage trace in two time windows (pre-stimulus and stimulus), normalised by fixed constants (8.0 and 4.0 respectively).
-The loss is the \gls{MAE} on these standardised statistics.
+For synthetic experiments, they define four differentiable summary statistics: the mean and standard deviation of the voltage trace in two time windows (pre-stimulus and stimulus), normalized by fixed constants (8.0 and 4.0 respectively).
+The loss is the \gls{MAE} on these standardized statistics.
 This suffices for coarse parameter recovery, where the goal is matching the overall voltage distribution rather than individual spikes.
 
 For fitting to experimental recordings, they switch to soft-DTW \cite{Blondel2018}, which tolerates temporal misalignments by warping the time axis.
@@ -105,34 +105,34 @@ Critically, they augment the cost matrix with a temporal penalty, yielding the c
 This approach produced good fits on Allen Cell Types Database recordings, but was applied exclusively to \gls{HH}-type models where no surrogate gradients are needed.
 
 \subsection{Spike Train Distance Metrics}
-The Van Rossum distance \cite{Rossum2001} (\cref{eq:van-rossum}) is naturally differentiable and therefore a candidate for gradient-based optimisation, but it has primarily been used as an \emph{evaluation} metric in theoretical neuroscience rather than as an \emph{optimisation} objective.
+The Van Rossum distance \cite{Rossum2001} (\cref{eq:van-rossum}) is naturally differentiable and therefore a candidate for gradient-based optimization, but it has primarily been used as an \emph{evaluation} metric in theoretical neuroscience rather than as an \emph{optimization} objective.
 The related Victor--Purpura metric is based on edit distances (spike insertion, deletion and shifting) and is not differentiable.
 
 Existing work falls into two non-overlapping categories: derivative-free methods applied to simplified models using any loss function \cite{Guarino2025, Marin2020, Cruz2021}, and gradient-based methods applied to inherently differentiable \gls{HH}-type models \cite{Deistler2025, Jones2024}.
-No prior work systematically investigates loss function design for gradient-based optimisation of simplified neuron models that require surrogate gradients.
+No prior work systematically investigates loss function design for gradient-based optimization of simplified neuron models that require surrogate gradients.
 
-\section{Training Stabilisation for Biophysical Models}\label{sec:rw:training-stab}
+\section{Training Stabilization for Biophysical Models}\label{sec:rw:training-stab}
 
 Training biophysical models with gradient descent is challenging beyond the choice of loss function.
 Gradient norms can spike by orders of magnitude during action potentials, parameters have different scales and units, and the loss landscape is highly non-convex with many local minima \cite{Deistler2025}.
 
-Deistler et al.\ \cite{Deistler2025} describe several stabilisation techniques implemented in \texttt{Jaxley}.
-First, they reparameterise bounded parameters through an inverse sigmoid transform that maps $\theta \in [l, u]$ to an unconstrained variable, simultaneously placing all parameters on a comparable scale and eliminating the gradient discontinuities at the bounds that hard clipping would introduce.
-Second, they employ Polyak stochastic gradient descent, in which the update is normalised by the gradient norm and rescaled by the current loss value, yielding implicit learning-rate decay as the optimum is approached.
-Third, they assign different optimisers to different parameter groups (e.g.\ ion channel conductances vs.\ morphological parameters), since gradient norms differ systematically across parameter types.
+Deistler et al.\ \cite{Deistler2025} describe several stabilization techniques implemented in \texttt{Jaxley}.
+First, they reparameterize bounded parameters through an inverse sigmoid transform that maps $\theta \in [l, u]$ to an unconstrained variable, simultaneously placing all parameters on a comparable scale and eliminating the gradient discontinuities at the bounds that hard clipping would introduce.
+Second, they employ Polyak stochastic gradient descent, in which the update is normalized by the gradient norm and rescaled by the current loss value, yielding implicit learning-rate decay as the optimum is approached.
+Third, they assign different optimizers to different parameter groups (e.g.\ ion channel conductances vs.\ morphological parameters), since gradient norms differ systematically across parameter types.
 Fourth, they use multilevel checkpointing to reduce the memory cost of backpropagation through long simulations, and in some experiments truncate the gradient in time to mitigate vanishing or exploding gradients.
 
-To address the non-convex landscape, Deistler et al.\ parallelise up to 1,000 gradient descent runs from different initialisations on a single GPU, selecting the best parameter set post-hoc.
+To address the non-convex landscape, Deistler et al.\ parallelize up to 1,000 gradient descent runs from different initializations on a single GPU, selecting the best parameter set post-hoc.
 This multi-start strategy is effective because individual runs are cheap once the simulation is compiled.
 
 These techniques are available as building blocks in \texttt{Jaxley} but have only been demonstrated for \gls{HH}-type models, where gradients flow naturally through smooth ion channel dynamics.
 For simplified models with surrogate gradients, additional challenges arise: the surrogate introduces an approximation error in the gradient, adaptation parameters ($b$, $\tau_w$) receive gradient signal only through spike events, and the effective gradient window of the surrogate may not match the voltage range where parameters are most sensitive.
-Whether the same stabilisation recipe transfers to this setting is an open question that we investigate empirically.
+Whether the same stabilization recipe transfers to this setting is an open question that we investigate empirically.
 
 \section{Summary and Research Gap}\label{sec:rw:summary}
 
 The landscape of neuron model parameter fitting spans three paradigms.
-Derivative-free methods (\glspl{EA}, Nelder-Mead, parameter space exploration) have been successfully applied to the \gls{AdEx} model \cite{Marin2020, Cruz2021, Guarino2025}, but require many forward simulations and scale poorly to large parameter counts.
+Derivative-free methods (\glspl{EA}, Nelder--Mead, parameter space exploration) have been successfully applied to the \gls{AdEx} model \cite{Marin2020, Cruz2021, Guarino2025}, but require many forward simulations and scale poorly to large parameter counts.
 Gradient-based methods achieve orders-of-magnitude speedups for \gls{HH}-type models \cite{Deistler2025, Jones2024}, but rely on the inherent differentiability of ion channel dynamics.
 Simulation-based inference \cite{Goncalves2020} provides full posterior distributions without differentiability requirements, but targets a different goal (uncertainty quantification) and requires a separate training phase.
 
@@ -140,5 +140,5 @@ Surrogate gradients bridge the differentiability gap for simplified models, enab
 However, prior work has validated surrogates exclusively for training synaptic weights on task-based classification objectives \cite{Neftci2019, Zenke2018, Gerum2021, Perez-Nieves2021}.
 Fitting biophysical parameters to experimental recordings poses distinct challenges: heterogeneous parameters, spike train similarity losses, and vanishing gradients through leak dynamics.
 
-No prior work systematically investigates how loss function design interacts with surrogate gradient optimisation for simplified neuron models.
+No prior work systematically investigates how loss function design interacts with surrogate gradient optimization for simplified neuron models.
 This thesis addresses that gap.
