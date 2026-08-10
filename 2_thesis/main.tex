@@ -432,25 +432,28 @@ ger
 %  Content
 
 \cleardoublepage
-\input{content/1_introduction.tex}
+\input{content/1_introduction}
 
 \cleardoublepage
-\input{content/2_background.tex}
+\input{content/2_background}
 
 \cleardoublepage
-\input{content/3_related_work.tex}
+\input{content/3_related_work}
 
 \cleardoublepage
-\input{content/4_methodology.tex}
+\input{content/4_implementation}
 
 \cleardoublepage
-\input{content/5_results.tex}
+\input{content/5_methodology}
 
 \cleardoublepage
-\input{content/6_discussion.tex}
+\input{content/6_results}
 
 \cleardoublepage
-\input{content/7_conclusion.tex}
+\input{content/7_discussion}
+
+\cleardoublepage
+\input{content/8_conclusion}
 
 \cleardoublepage
 % Print the bibliography (and make it appear in the table of contents)
@@ -467,7 +470,7 @@ ger
 
 \chapter{Figures and Tables}
 
-\section{Detailed Experiment Configuration}\ierror{Broken ref in \cref{tab:training-params} below (``Parameter transform'' row): \texttt{\textbackslash cref\{sec:training-stabilization\}} has no such label --- use \texttt{sec:method:opt:stabilization}.}
+\section{Detailed Experiment Configuration}
 \begin{landscape}
 \begin{table}[t]
 \centering
@@ -485,7 +488,7 @@ Learning rate             & \multicolumn{3}{c}{$0.001$}                         
 Polyak $(\alpha,\beta)$   & \multicolumn{3}{c}{$(0.8,\,0.6)$}                             & \multicolumn{2}{c}{---} \\
 Steps / max function evals & \multicolumn{3}{c}{25 gradient steps}                         & \multicolumn{2}{c}{50 evals} \\
 NM tolerances $(x_{\text{atol}}, f_{\text{atol}})$ & \multicolumn{3}{c}{---}                & \multicolumn{2}{c}{$(10^{-4},\,10^{-4})$, adaptive} \\
-Parameter transform       & \multicolumn{3}{c}{sigmoid (\cref{sec:training-stabilization})} & \multicolumn{2}{c}{box-bounded} \\
+Parameter transform       & \multicolumn{3}{c}{sigmoid (\cref{sec:method:opt:stabilization:sigmoid})} & \multicolumn{2}{c}{box-bounded} \\
 \midrule
 \multicolumn{6}{l}{\textit{Surrogate gradient (gradient methods only)}} \\
 Surrogate type            & \multicolumn{3}{c}{SuperSpike (\cref{eq:superspike-surrogate})} & \multicolumn{2}{c}{not consumed} \\

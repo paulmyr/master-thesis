@@ -1,6 +1,5 @@
 \chapter{Introduction}
 \label{ch:introduction}
-\iwarning{Structure of this chapter can change, should more or less reflect the structure of whole thesis}
 
 In the last century, studying and modelling neurons has been seen as the gateway of understanding the brain in its entirety.
 %\iwarning{The introduction opens informally (``gateway of understanding the brain in its entirety'', ``\dots{}20 years ago'' below). Consider a more precise, formal framing for an academic introduction.}
@@ -19,7 +18,7 @@ Specifically, we ask:
 \begin{enumerate}
   \item can surrogate gradients produce useful parameter updates for the \gls{AdEx} model,
   \item what loss function design is required to achieve successful optimization and
-  \item what stabilization methods aid successful optimization?
+  \item where does gradient-based fitting fail relative to derivative-free methods, and why?
 \end{enumerate}
 To investigate this, we make the following contributions:
 \begin{enumerate}
@@ -30,8 +29,9 @@ To investigate this, we make the following contributions:
 \end{enumerate}
 Further work is needed to enable efficient and effective parameter optimization using gradient-based optimization.
 
-In this work we will demonstrate how to bridge two worlds:
-combine gradient optimization using simplified models in biophysical neuron simulations.
-We start giving a brief background introduction in \cref{ch:background} and an overview over the related work in \cref{ch:relwork}.
-In \cref{ch:method} we introduce our methodology, \cref{ch:results} contains our findings and \cref{ch:discussion} provides reasoning.
-We conclude in \cref{ch:conclusionsAndFutureWork}, discuss future work and ethical considerations.
+In this work we bridge two worlds: gradient-based optimization and the simplified neuron models used in biophysical simulation.
+\Cref{ch:background} gives the necessary background and \cref{ch:relwork} surveys the related work.
+\Cref{ch:implementation} presents our first contribution --- a differentiable \gls{AdEx} model in \texttt{Jaxley}, together with the surrogate-gradient variant that makes gradient-based fitting possible.
+\Cref{ch:methods} then describes how we optimize and evaluate it: the loss functions we compare, the training setup, and the recovery-based benchmarks.
+\Cref{ch:results} reports our findings and \cref{ch:discussion} interprets them.
+We conclude in \cref{ch:conclusionsAndFutureWork} with future work and ethical considerations.
