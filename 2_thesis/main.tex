@@ -129,7 +129,7 @@ morekeywords={begin, todo, textbf, textit, texttt}
 \input{custom_configuration}
 
 \title{Surrogate Gradients for Gradient-Based Parameter Estimation in Simplified Neuron Models}
-\subtitle{THESIS SUB TOPIC}
+\subtitle{Where Gradient-Based Fitting Fails, and Where It Does Not}
 
 % give the alternative title - i.e., if the thesis is in English, then give a Swedish title
 \alttitle{Detta är den svenska översättningen av titeln}
@@ -143,7 +143,6 @@ morekeywords={begin, todo, textbf, textit, texttt}
 % Try to put the words in the same order in both languages to facilitate matching. For example:
 \EnglishKeywords{Gradient Descent, Integrate-and-Fire Model, Simplified Neuron Model, Surrogate Gradients, Parameter Estimation, Automatic Differentiation}
 \SwedishKeywords{TODO KEYWORDS SWEDISH}
-\GermanKeywords{Gradientenabstieg, Integrate-and-Fire-Modell, Vereinfachtes Neuronenmodell, Surrogatgradienten, Parameterschätzung, Automatische Differentiation}
 
 %%%%% For the oral presentation
 %% Add this information once your examiner has scheduled your oral presentation
@@ -300,7 +299,6 @@ morekeywords={begin, todo, textbf, textit, texttt}
 
 \cleardoublepage
 \listoftodos
-\iwarning{Correction (verified by compiling): despite \texttt{final} in the document class, todos \emph{do} render --- \texttt{todonotes} is loaded in \texttt{lib/includes.tex} without \texttt{obeyFinal}, so every \texttt{\textbackslash todo} (and this whole annotation pass) appears and \texttt{\textbackslash listoftodos} is populated (122 entries). For a clean \emph{final} PDF, add \texttt{obeyFinal} to the \texttt{todonotes} load or pass it \texttt{disable}, and remove \texttt{\textbackslash listoftodos}. Minor: a marginpar-crowding ``Float(s) lost'' occurs at the end of ch.~4 --- one margin note near that page bottom may not print (no figure/table is affected).}
 
 \cleardoublepage
 \setcounter{page}{1}
@@ -317,7 +315,22 @@ eng
 %%% These page(s) will be removed before the thesis is inserted into DiVA.
 
 \begin{scontents}[store-env=abstracts,print-env=true]
-  \itodo{Abstract}
+Simplified spiking neuron models such as the Adaptive Exponential Integrate-and-Fire (AdEx)
+model reproduce the firing behaviour of diverse neuron types at a fraction of the cost of biophysically detailed models,
+making them attractive for large-scale brain simulation.
+Fitting their parameters to recordings, however, still relies on derivative-free search such as grid search or
+evolutionary algorithms, because the discrete spike-and-reset mechanism renders these models non-differentiable.
+Surrogate gradients, used in deep spiking networks, replace the spike derivative with a smooth approximation on the backward pass.
+Whether they also enable efficient gradient-based parameter estimation for single simplified neurons is untested.
+
+We implement a differentiable AdEx model with a surrogate-gradient variant in the Jaxley framework.
+The implementation is on par with target-compiled C++ ($0.9$--$1.0\times$ its integration loop)
+while remaining end-to-end differentiable, \texttt{vmap}-batchable and GPU/TPU-portable,
+$\sim188\times$ ($132$--$308\times$) faster than Brian2's default runtime mode.
+
+Across a recovery-radius benchmark of $2{,}700$ paired runs (success = coincidence factor $\Gamma > 0.5$), gradient-based fitting never matched a Nelder--Mead baseline, reaching a recovery radius $\delta_{50} \leq 0.05$ against up to $0.4$ for the simplex.
+A subthreshold control locates the difficulty: below rheobase, where MSE reduces to a smooth regression, gradient descent instead beats Nelder--Mead ($80\%$ against $53\%$ convergence, McNemar $p < 10^{-4}$).
+The obstacle is therefore the spike mechanism and the loss geometry it induces --- with no spikes to match, the same MSE loss is easy to fit --- not gradient descent itself.
 \end{scontents}
 
 \subsection*{Keywords}
@@ -344,30 +357,30 @@ swe
 \babelpolyLangStop{swedish}
 
 \cleardoublepage
-\babelpolyLangStart{ngerman}
-\begin{abstract}
-    \markboth{\abstractname}{}
-\begin{scontents}[store-env=lang]
-ger
-\end{scontents}
-\begin{scontents}[store-env=abstracts,print-env=true]
-  \itodo{Zusammenfassung}
-\end{scontents}
-\subsection*{Schlüsselwörter}
-\begin{scontents}[store-env=keywords,print-env=true]
-\InsertKeywords{german}
-\end{scontents}
-\end{abstract}
-\babelpolyLangStop{ngerman}
-\cleardoublepage
-
 \section*{Acknowledgements}
 \markboth{Acknowledgements}{}
-  \itodo{Acknowledgements}
+First, I would like to extend my gratitude to my supervisor.
+Alex has not only invested considerable time and attention in my project and carefully guided this thesis to a successful end,
+but also proposed the original topic.
+His teaching together with Erik Fransén in the course `Mathematical Modelling of Biological Systems' is what inspired me to pursue this research area in the first place.
+
+Of course, I would like to thank Erik for examining this work as well as my opponent, Helena, for her valuable criticism and feedback.
+
+Lastly, I would like to thank my good friends and fellow students who made my time at KTH so memorable and fun, as well as my family who supported me every step of the way.
+Without you, I would not be where I am today. Thank you.
+
 \acknowlegmentssignature
 
 \subsection*{AI Disclosure}
-  \itodo{AI Disclosure}
+AI has been used at all stages of this project.
+The model used was Claude Opus 4.8 by Anthropic.
+Usage included research tasks (literature search), programming assistance (in a copilot capacity, specifically for plotting scripts),
+as well as writing assistance.
+It was used for translation, style optimisation, grammar, spelling and form correction.
+Additionally, it helped with LaTeX formatting tasks.
+
+The author claims full responsibility for the contents of the thesis.
+All outputs have been carefully verified and, if applicable, tested.
 
 \fancypagestyle{plain}{}
 \renewcommand{\chaptermark}[1]{ \markboth{#1}{}} 
@@ -399,8 +412,6 @@ ger
 %\printglossary[type=\acronymtype, title={List of acronyms and abbreviations}]
 
 %\printnoidxglossary[style=mylong, title={List of acronyms and abbreviations}]
-\engExpl{The list of acronyms and abbreviations should be in alphabetical order based on the spelling of the acronym or abbreviation.
-}
 
 % if the nomenclature option was specified, then include the nomenclature page(s)
 \ifnomenclature
@@ -419,8 +430,6 @@ ger
 \selectlanguage{english}
 
 \itodo{Check custom\_configuration.tex!!!}
-\itodo{Change subtitle}
-\itodo{Change opponent}
 \itodo{Swedish title}
 \itodo{Swedish subtitle}
 \itodo{Keywords swedish}
