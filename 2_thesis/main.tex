@@ -5,8 +5,8 @@
 %% Engineering Program in Computer Science at KTH ICT. Adaptation is the
 %% translation of English headings into Swedish as the addition of Swedish
 
-%\documentclass[final, english, biblatex]{kththesis}
-\documentclass[english, biblatex]{kththesis}
+\documentclass[final, english, biblatex]{kththesis}
+%\documentclass[english, biblatex]{kththesis}
 
 \usepackage[utf8]{inputenc}
 
@@ -132,8 +132,8 @@ morekeywords={begin, todo, textbf, textit, texttt}
 \subtitle{Where Gradient-Based Fitting Fails, and Where It Does Not}
 
 % give the alternative title - i.e., if the thesis is in English, then give a Swedish title
-\alttitle{Detta är den svenska översättningen av titeln}
-\altsubtitle{Detta är den svenska översättningen av undertiteln}
+\alttitle{Surrogatgradienter för gradientbaserad parameterskattning i förenklade neuronmodeller}
+\altsubtitle{Där gradientbaserad anpassning misslyckas, och där den inte gör det}
 % alternative, if the thesis is in Swedish, then give an English title
 %\alttitle{This is the English translation of the title}
 %\altsubtitle{This is the English translation of the subtitle}
@@ -142,7 +142,7 @@ morekeywords={begin, todo, textbf, textit, texttt}
 % following the respective abstract.
 % Try to put the words in the same order in both languages to facilitate matching. For example:
 \EnglishKeywords{Gradient Descent, Integrate-and-Fire Model, Simplified Neuron Model, Surrogate Gradients, Parameter Estimation, Automatic Differentiation}
-\SwedishKeywords{TODO KEYWORDS SWEDISH}
+\SwedishKeywords{Gradientnedstigning, Integrate-and-Fire-modell, Förenklad neuronmodell, Surrogatgradienter, Parameterskattning, Automatisk differentiering}
 
 %%%%% For the oral presentation
 %% Add this information once your examiner has scheduled your oral presentation
@@ -324,13 +324,13 @@ Surrogate gradients, used in deep spiking networks, replace the spike derivative
 Whether they also enable efficient gradient-based parameter estimation for single simplified neurons is untested.
 
 We implement a differentiable AdEx model with a surrogate-gradient variant in the Jaxley framework.
-The implementation is on par with target-compiled C++ ($0.9$--$1.0\times$ its integration loop)
-while remaining end-to-end differentiable, \texttt{vmap}-batchable and GPU/TPU-portable,
-$\sim188\times$ ($132$--$308\times$) faster than Brian2's default runtime mode.
+The implementation is on par with target-compiled C++ Brian2 code while remaining end-to-end differentiable, \texttt{vmap}-batchable and GPU/TPU-portable.
+It is 200 times faster than Brian2's default runtime mode.
 
-Across a recovery-radius benchmark of $2{,}700$ paired runs (success = coincidence factor $\Gamma > 0.5$), gradient-based fitting never matched a Nelder--Mead baseline, reaching a recovery radius $\delta_{50} \leq 0.05$ against up to $0.4$ for the simplex.
-A subthreshold control locates the difficulty: below rheobase, where MSE reduces to a smooth regression, gradient descent instead beats Nelder--Mead ($80\%$ against $53\%$ convergence, McNemar $p < 10^{-4}$).
-The obstacle is therefore the spike mechanism and the loss geometry it induces --- with no spikes to match, the same MSE loss is easy to fit --- not gradient descent itself.
+Across a recovery-radius benchmark of $2{,}700$ paired runs,
+gradient-based fitting never matched a gradient-free Nelder--Mead baseline.
+At subthreshold levels, gradient descent instead beats Nelder--Mead.
+The obstacle is therefore the spike mechanism and the loss geometry it induces, not gradient descent itself.
 \end{scontents}
 
 \subsection*{Keywords}
@@ -347,7 +347,20 @@ The obstacle is therefore the spike mechanism and the loss geometry it induces -
 swe
 \end{scontents}
 \begin{scontents}[store-env=abstracts,print-env=true]
-  \itodo{Swedish Abstract}
+Förenklade spikande neuronmodeller såsom den adaptiva exponentiella Integrate-and-Fire-modellen (AdEx) återger fyrningsbeteendet hos olika neurontyper till en bråkdel av kostnaden för biofysiskt detaljerade modeller,
+vilket gör dem attraktiva för storskalig hjärnsimulering.
+Att anpassa deras parametrar till inspelningar bygger dock fortfarande på derivatafri sökning såsom rutnätssökning eller evolutionära algoritmer,
+eftersom den diskreta spik-och-återställningsmekanismen gör modellerna icke-deriverbara.
+Surrogatgradienter, som används i djupa spikande nätverk, ersätter spikderivatan med en glatt approximation i bakåtpasset.
+Huruvida de även möjliggör effektiv gradientbaserad parameterskattning för enskilda förenklade neuroner är oprövat.
+
+Vi implementerar en deriverbar AdEx-modell med en surrogatgradientvariant i ramverket Jaxley.
+Implementeringen är i nivå med målkompilerad C++-kod från Brian2, samtidigt som den förblir deriverbar från början till slut, \texttt{vmap}-batchbar och GPU/TPU-portabel.
+Den är 200 gånger snabbare än Brian2:s standardkörningsläge.
+
+I ett riktmärke för återhämtningsradie med 2\,700 parvisa körningar lyckades gradientbaserad anpassning aldrig matcha en derivatafri Nelder--Mead-baslinje.
+Vid subtröskelnivåer överträffar gradientnedstigning i stället Nelder--Mead.
+Hindret är därför spikmekanismen och den förlustgeometri den ger upphov till, inte gradientnedstigningen i sig.
 \end{scontents}
 \subsection*{Nyckelord}
 \begin{scontents}[store-env=keywords,print-env=true]
@@ -371,7 +384,9 @@ Without you, I would not be where I am today. Thank you.
 
 \acknowlegmentssignature
 
-\subsection*{AI Disclosure}
+\cleardoublepage
+\section*{AI Disclosure}
+\markboth{AI Disclosure}{}
 AI has been used at all stages of this project.
 The model used was Claude Opus 4.8 by Anthropic.
 Usage included research tasks (literature search), programming assistance (in a copilot capacity, specifically for plotting scripts),
@@ -382,6 +397,7 @@ Additionally, it helped with LaTeX formatting tasks.
 The author claims full responsibility for the contents of the thesis.
 All outputs have been carefully verified and, if applicable, tested.
 
+\cleardoublepage
 \fancypagestyle{plain}{}
 \renewcommand{\chaptermark}[1]{ \markboth{#1}{}} 
 \tableofcontents
@@ -430,9 +446,6 @@ All outputs have been carefully verified and, if applicable, tested.
 \selectlanguage{english}
 
 \itodo{Check custom\_configuration.tex!!!}
-\itodo{Swedish title}
-\itodo{Swedish subtitle}
-\itodo{Keywords swedish}
 
 % End of Abstract
 % ----------------------------------------------------------------------------------------------

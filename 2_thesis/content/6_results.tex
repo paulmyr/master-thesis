@@ -108,7 +108,9 @@ but that it reaches comparable raw throughput while remaining end-to-end differe
   \begin{center}
     \includegraphics[width=\textwidth]{figures/surrogate_vs_non-surrogate_comparison}
   \end{center}
-  \caption{Comparison of \texttt{AdEx} and \texttt{AdExSurrogate} channels. Both produce identical voltage traces as expected.}\label{fig:surrogate-channel-verification}
+  \caption{Comparison of \texttt{AdEx} (black, solid) and \texttt{AdExSurrogate} (red, dashed; sigmoid surrogate, $\beta = 25$) on the three Naud parameter sets.
+    Top row shows membrane potential over time. Bottom row compares the corresponding spike trains.
+    Both channels produce identical voltage traces and identical spike times as expected.}\label{fig:surrogate-channel-verification}
 \end{figure*}
 
 We run the two-part verification protocol of \cref{sec:method:surrogate-gradients:verification}.
