@@ -328,8 +328,7 @@ enough to establish that the approach is viable in principle, but already reveal
 %\Cref{sec:results:real-singletrace} presents an attempt on fitting parameters to real voltage recordings.
 \Cref{sec:results:baseline} then reports the recovery-radius benchmark: three differentiable losses against two Nelder--Mead baselines on matched initializations.
 The benchmark is the headline result of the chapter, and the picture it produces is uncomfortable:
-on every scenario and every perturbation scale, gradient-based recovery performs similar to or below the no-optimization baseline.
-Nelder--Mead on the same objective recovers reliably better.
+gradient recovery clears the no-optimization floor only at the smallest perturbations, and never matches Nelder--Mead on the same objective.
 The geometric features of \cref{sec:results:landscape} suggest this pattern in advance.
 
 \subsection{A Worked Example: Recovering a Tonic AdEx Cell}\label{sec:results:positive-example}
@@ -414,11 +413,10 @@ The $\Gamma > 0.5$ threshold follows \cref{sec:method:opt:evaluation-metrics}; t
 \end{figure*}
 
 Four observations stand out.
-First, all gradient methods perform similar to or worse than the initialization floor.
-Even for tiny perturbations, the gradient approach struggled to faithfully recover original parameters.
+First, every gradient loss but \gls{MSE} clears the floor at small $\delta$ (median $\Gamma_{0.05}=1.00$ for \texttt{grad\_vanrossum}), then collapses by $\delta=0.1$.
 Second, both Nelder--Mead variants dominate every gradient method on every scenario at every $\delta$: they have the largest recovery radii and the highest success rates inside them.
 Third, \texttt{grad\_mse} performed consistently the worst, consistent with the \gls{MSE} landscape geometry of \cref{sec:results:landscape:mse}.
-Fourth, the two Nelder--Mead variants are indistinguishable: \texttt{nm\_guarino} (soft features) and \texttt{nm\_guarino\_hard} (exact features) report identical $\delta_{50}\in\{0.2,0.2,0.4\}$ and identical median $\Gamma_{0.05}=+1.00$ on every scenario, with per-direction outcomes differing by at most one direction out of 30.
+Fourth, the two Nelder--Mead variants are indistinguishable: \texttt{nm\_guarino} (soft features) and \texttt{nm\_guarino\_hard} (exact features) report identical $\delta_{50}=0.8$ and identical median $\Gamma_{0.05}=+1.00$ on every scenario, with per-direction outcomes differing by at most one direction out of 30.
 
 \subsubsection{Recovery radii}
 \Cref{tab:results-summary} reports two summary statistics per (scenario, method) pair:
@@ -437,10 +435,10 @@ The median at $\delta = 0.05$ is the most diagnostic single number: $\delta = 0.
 \textbf{Method} & $\delta_{50}$ & $\Gamma_{0.05}$ & $\delta_{50}$ & $\Gamma_{0.05}$ & $\delta_{50}$ & $\Gamma_{0.05}$ \\
 \midrule
 \texttt{grad\_mse}         & --     & $0.00$ & --     & $0.00$ & --     & $0.00$ \\
-\texttt{grad\_guarino}     & $0.02$ & $0.13$ & --     & $0.28$ & $0.02$ & $0.19$ \\
-\texttt{grad\_vanrossum}   & --     & $0.07$ & $0.05$ & $0.62$ & $0.02$ & $0.12$ \\
-\texttt{nm\_guarino}       & $0.2$  & $1.00$ & $0.2$  & $1.00$ & $0.4$  & $1.00$ \\
-\texttt{nm\_guarino\_hard} & $0.2$  & $1.00$ & $0.2$  & $1.00$ & $0.4$  & $1.00$ \\
+\texttt{grad\_guarino}     & $0.05$ & $1.00$ & $0.05$ & $0.54$ & $0.05$ & $0.90$ \\
+\texttt{grad\_vanrossum}   & $0.05$ & $1.00$ & $0.1$  & $1.00$ & $0.05$ & $1.00$ \\
+\texttt{nm\_guarino}       & $0.8$  & $1.00$ & $0.8$  & $1.00$ & $0.8$  & $1.00$ \\
+\texttt{nm\_guarino\_hard} & $0.8$  & $1.00$ & $0.8$  & $1.00$ & $0.8$  & $1.00$ \\
 \midrule
 \texttt{init\_floor}       & $0.02$ & $0.07$ & $0.02$ & $0.32$ & $0.02$ & $0.01$ \\
 \bottomrule

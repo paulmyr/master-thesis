@@ -27,8 +27,7 @@ The infrastructure is therefore valuable independently of whether the gradient c
 The recovery-radius benchmark of \cref{sec:results:baseline} gives an unambiguous and uncomfortable answer.
 Across all three scenarios and every perturbation scale, no gradient method matched the Nelder--Mead simplex on the same objective.
 \gls{MSE} was actively harmful, finishing at or below the floor on every run.
-Guarino usually improved on the floor, but at its worst only tied it.
-Van Rossum, the best of the three, enlarged the basin only on \texttt{adaptation}.
+Guarino and Van Rossum both clear the floor at small $\delta$, but their radius never exceeds $\delta=0.1$ --- an order of magnitude short of Nelder--Mead.
 The answer to the thesis question follows directly: gradient-based optimization produces useful updates for the \gls{AdEx}
 model only inside basins that are already small enough for derivative-free search to cover.
 This kills the argument that motivated the work.
@@ -77,12 +76,8 @@ For Van Rossum, a change in spike count is a property of the spike train $s(t)$,
 The three losses differ in how much softening they stack on top of the surrogate, and the recovery numbers of \cref{tab:results-summary} partly track this.
 Van Rossum adds the least: its kernel convolution and $L^2$ norm are exactly differentiable, so the surrogate is its only source of bias.
 Guarino adds more, routing through soft validity gates with their own sharpness $\beta_v$.
-If bias simply grew with the number of softening layers, Van Rossum would beat Guarino everywhere.
-It does not.
-Van Rossum gives the single best gradient result in the benchmark, $\Gamma_{0.05}=+0.62$ on \texttt{adaptation}, the only gradient row whose recovery radius clears the initialization floor.
-But Guarino edges it on \texttt{tonic} ($+0.13$ vs $+0.07$) and \texttt{initial\_bursting} ($+0.19$ vs $+0.12$), where neither loss beats the floor.
-So the ordering is not clean.
-Van Rossum is the least biased of the three only where the gradient signal is strong enough to separate the losses at all.
+If bias grew with softening layers, Van Rossum should beat Guarino everywhere --- and it does: a tie on \texttt{tonic} ($+1.00$) and wins on \texttt{adaptation} ($+1.00$ vs $+0.54$) and \texttt{initial\_bursting} ($+1.00$ vs $+0.90$).
+The least-softened loss carries the least bias, though both trail Nelder--Mead by an order of magnitude.
 \gls{MSE} stays at the bottom throughout, which the non-spiking attractor above already explains.
 
 Guarino also carries a tuning cost the others avoid.
