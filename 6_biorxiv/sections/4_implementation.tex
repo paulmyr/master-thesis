@@ -1,0 +1,242 @@
+\subsection{Implementation}\label{ch:implementation}
+
+This section builds the tool the rest of the thesis relies on: a differentiable \gls{AdEx} model for \texttt{Jaxley}.
+A simplified spiking neuron of this kind --- with a discrete reset and exponential spike initiation --- is not something \texttt{Jaxley}, otherwise designed for \gls{HH}-type models, previously provided, so building it is the first of this work's contributions.
+We construct it in two parts: the \gls{AdEx} channel and its discrete-time formulation (\cref{sec:method:adex_impl}), and the surrogate-gradient variant --- the soft reset and the choice of surrogate function --- that makes the discrete spike mechanism differentiable (\cref{sec:method:surrogate-gradients}).
+Both are verified against the Brian2 simulator and compared on runtime; the corresponding numerical results appear in \cref{ch:results}.
+The same construction pattern carries over to other simplified models such as \gls{LIF} and Izhikevich, so the contribution is not limited to \gls{AdEx}.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{AdEx Model Implementation}\label{sec:method:adex_impl}
+We implement the \gls{AdEx} model as a \texttt{Jaxley} channel, following the formulation by Brette and Gerstner \cite{Brette2005} (see \cref{eq:adex1,eq:adex2,eq:adex3}).
+Unlike \gls{HH}-type channels that contribute currents to a shared voltage solver, simplified models like \gls{AdEx} handle voltage integration directly within their \texttt{update\_states()} method.
+We follow the implementation pattern of \cite{Deistler2025}.
+
+\paragraph{Numerical Integration}\label{sec:method:adex:numerics}
+The \gls{AdEx} model consists of two coupled differential equations requiring different numerical treatment:
+
+\textbf{Adaptation current $w$:}
+\Cref{eq:adex2} is a linear dynamic system in $w$, allowing the use of exponential Euler integration.
+It has the analytical solution
+\begin{equation}\label{eq:adaptation-current-integration}
+  w(t+\Delta t) = w(t) \cdot e^{-\Delta t / \tau_w} + a(V - E_L)(1 - e^{-\Delta t / \tau_w})
+\end{equation}
+which gives increased numerical stability compared to e.g. forward Euler methods.
+
+\textbf{Membrane potential $V$:}
+The exponential term in \cref{eq:adex1} makes this equation nonlinear, requiring numerical integration, for example forward Euler:
+\begin{equation}
+    V(t + \Delta t) = V(t) + \Delta t \cdot \frac{dV}{dt}
+\end{equation}
+To prevent numerical overflow from the exponential spike mechanism, we clamp the argument:
+\begin{equation}
+    \exp\left(\frac{V - V_T}{\Delta_T}\right) \rightarrow \exp\left(\min\left(\frac{V - V_T}{\Delta_T}, 10\right)\right)
+\end{equation}
+
+\paragraph{Spike Detection and Reset}\label{sec:method:adex:spike-detection}
+After each integration step, we check for threshold crossing ($V > v_{\text{threshold}}$).
+If the threshold is crossed, we apply the reset conditions from \cref{eq:adex3}.
+For standard \texttt{LIF}, \texttt{AdEx} or \texttt{Izhikevich}, this uses \texttt{jax.lax.select()} for conditional assignment.
+In the differentiable variants, we use the continuous formulation described in \cref{sec:method:surrogate-gradients:implementation} for both $V$ and $w$:
+\begin{align}
+    V_{\text{new}} &= s \cdot V_r + (1 - s) \cdot V, \\
+    w_{\text{new}} &= s \cdot (w + b) + (1 - s) \cdot w,
+\end{align}
+where $s = H(v - v_{\text{th}})$ is the spike indicator (binary in the forward pass; its backward derivative is supplied by the surrogate $\varphi_\beta$).
+
+\paragraph{Model Parameters}\label{sec:method:adex:default-parameters}
+\Cref{tab:adex_params} summarizes the \gls{AdEx} parameters and their default values.
+Some parameters have direct physiological counterparts (e.g., $C_m$ or $E_L$) and could technically be measured.
+However, to accurately reproduce neuron spiking behaviour, values can significantly diverge from biophysically plausible value ranges.
+This is expected and accepted when using simplified models, however, increases the demand of fitting strategies.
+
+\begin{table*}[t]
+\centering
+\caption{\gls{AdEx} model parameters and default values.}
+\label{tab:adex_params}
+\begin{tabular}{lllll}
+\toprule
+\textbf{Parameter} & \textbf{Symbol} & \textbf{Default} & \textbf{Unit} & \textbf{Trainable} \\
+\midrule
+Membrane capacitance & $C_m$ & 200 & pF & Yes\\
+Leak conductance & $g_L$ & 10 & nS & Yes\\
+Leak reversal & $E_L$ & -70 & mV & Yes \\
+Threshold potential & $V_T$ & -50 & mV & Yes\\
+Slope factor & $\Delta_T$ & 2 & mV & Yes\\
+Reset potential & $V_r$ & -58 & mV & Yes \\
+Detection threshold & $v_{\text{threshold}}$ & 0 & mV & No \\
+Adaptation time constant & $\tau_w$ & 30 & ms & Yes\footnotemark[2]\\
+Subthreshold adaptation & $a$ & 2 & nS & Yes\footnotemark[2] \\
+Spike-triggered adaptation & $b$ & 0 & pA & Yes\footnotemark[2] \\
+Stimulation current & $I$ & 500 & pA & No \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+More on trainability of the parameters in \cref{sec:results:training}.
+\footnotetext[2]{The adaptation variables are technically trainable exactly like all other parameters.
+However, as we will discuss in \cref{ch:discussion}, the gradient signal was too small and noisy for us to achieve sensible results for these parameters.}
+
+\paragraph*{Point-Neuron Geometry Bridge}\label{sec:method:adex:geometry-bridge}
+
+The \gls{AdEx} model is a point neuron defined with absolute units ($C_m$ in pF, $g_L$ in nS, currents in pA).
+Jaxley, however, is designed for geometry-aware biophysical simulations and operates with specific capacitance ($\mu$F/cm$^2$), current densities ($\mu$A/cm$^2$), and compartment surface areas.
+To bridge this mismatch, we assign a fixed fictitious cylindrical geometry with surface area
+$A = 100\;\mu\text{m}^2$ (radius $= 1\;\mu$m, length $= 50/\pi\;\mu$m) and store the absolute capacitance $C_m$ (in pF) directly in Jaxley's \texttt{capacitance} parameter.
+Why does this work?
+As stated in \cref{sec:method:adex_impl}, there are two different options on how voltage equations are solved in \texttt{Jaxley}: \texttt{update\_states} and \texttt{compute\_current}.
+Since \texttt{compute\_current} is set to 0, all internal dynamics are handled entirely in \texttt{update\_states}, which computes
+$\mathrm{d}V/\mathrm{d}t = (-I_\text{leak} + I_\text{exp} - w) / C_m$
+in point-neuron units (pA\,/\,pF\,$=$\,mV/ms).
+This way, there is no double integration.
+However, external current stimulation is passed into the channel by \texttt{Jaxley's} \texttt{convert\-\_point\-\_process\-\_to\-\_distributed}.
+$I_\text{nA} / A \times 10^5\;[\mu\text{A/cm}^2]$.
+With $A = 100\;\mu\text{m}^2$ this simplifies to $I_\text{nA} \times 1000 = I_\text{pA}$ (numerically).
+The voltage solver then divides by \texttt{capacitance}: $I_\text{pA}\,/\,C_m\;[\text{mV/ms}]$, which is in correct point-neuron units.
+
+Importantly, \textbf{$C_m$ is trainable.}
+Because the geometry is fixed, changing $C_m$ during optimization only affects the two divisions described above --- exactly the physical role of membrane capacitance.
+Therefore no geometry recalculations are needed.
+Conversion complexity is reduced to a simple unit change: $I_\text{nA} = I_\text{pA}\,/\,1000$, no parameter-dependent scaling is required.
+
+\paragraph{Implementation Verification}\label{sec:method:adex:verification}
+Before any of the gradient-based experiments make sense, we need to be confident that the forward simulation itself is correct.
+Otherwise, every later observation about loss landscapes, gradients, or training failures would be ambiguous: a real property of gradient-based optimization, or just a bug in the dynamics?
+To rule out the latter, we compare our \gls{AdEx} channel against Brian2 \cite{Stimberg2019}, a widely-used and well-tested simulator for spiking neural networks.
+Both simulators are configured (almost\footnote{Brian2 uses the same numerical integration scheme for both ODEs, whereas our AdEx implementation uses forward Euler for the voltage equation and exponential Euler for the adaptation equation. We mitigate an effect of this difference by choosing a small enough time step.}) identically:
+\begin{itemize}
+    \item Time step: $\Delta t = 0.01$ ms
+    \item Simulation duration: 500 ms
+    \item Stimulation duration: 400 ms
+    \item Initial conditions: $V(0) = V_r$, $w(0) = 0$
+\end{itemize}
+
+We evaluate three parameter configurations from Brette \& Gerstner \cite{Brette2005} and from Naud et al.\ \cite{Naud2008} that produce distinct firing patterns:
+
+\textbf{Tonic spiking}:\\
+Regular spiking without spike-frequency adaptation, serving as a baseline case.
+The parameters are the default parameters (see \cref{tab:adex_params}).
+
+\textbf{Adaptation}:\\
+Strong spike-triggered adaptation with slow decay, producing decreasing firing rates over time.
+The parameters used are
+$C_m = 200$,
+$g_L = 12$,
+$E_L = -70$,
+$v_T = -50$,
+$\Delta_T = 2$,
+$v_r = -58$,
+$v_{\text{threshold}} = 0$,
+$\tau_w = 300$,
+$a = 2$,
+$b = 60$,
+$I = 500$.
+
+\textbf{Original parameters}:\\
+The original parameter set from Brette and Gerstner, demonstrating combined adaptation mechanisms.
+The parameters used are
+$C_m = 281$,
+$g_L = 30$,
+$E_L = -70.6$,
+$v_T = -50.4$,
+$\Delta_T = 2$,
+$v_r = -70.6$,
+$v_{\text{threshold}} = 20$,
+$\tau_w = 144$,
+$a = 4$,
+$b = 80.5$,
+$I = 2500$.
+
+For each configuration we look at three things: an overlay of the voltage traces from both simulators as a qualitative sanity check, the number of spikes each simulator produces, and the maximum pair-wise difference in spike times,
+$$\max_i |t_i^{\text{Jaxley}} - t_i^{\text{Brian2}}|,$$
+as a quantitative measure of agreement.
+The actual numbers are reported in \cref{sec:results:verification}.
+
+\paragraph{Runtime Performance Comparison to Brian2}\label{sec:method:adex:runtime}
+We evaluate runtime performance of the AdEx implementation by comparing it to Brian2.
+To establish a fair comparison, we benchmark against the different available runtimes, namely the python environment using \textit{cython} and c++.
+In the last case, the model gets compiled into native c++ code which then is compiled to the target platform.
+We perform all tests on an Apple MacBook Air (M1), see more details in \cref{sec:method:compute-environment}.
+
+The benchmark is set up as follows:
+we simulate the AdEx equations with the same (tonic) parameters for different simulation lengths.
+Specifically, we time a single point neuron over a sweep of simulation durations ($200$--$5000$\,ms, i.e.\ $8{,}000$--$200{,}000$ integration steps)
+and separate the one-time compile/code-generation cost from the per-run integration walltime, which is the quantity compared.
+Each scenario is performed 20 times for a time step size of $dt = 0.025$.
+Brian2 is using the same numerical scheme for both equations, whereas Jaxley uses forward Euler for the voltage equation and
+exponential Euler for the adaptation.
+This choice is made, to further speed up the Brian2 simulation.
+Results are presented in \cref{sec:results:performance}.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Integration of Surrogate Gradients into Jaxley}\label{sec:method:surrogate-gradients}
+\texttt{Jaxley} is built on top of \texttt{JAX} and leverages its automatic differentiation capabilities for gradient-based parameter optimization.
+Neuron dynamics in \texttt{Jaxley} are defined through \texttt{Channel} classes, which specify three core methods:
+\texttt{update\_states()} for state variable evolution, \texttt{compute\_current()} for membrane current contributions, and \texttt{init\_state()} for initialization of state variables.
+During simulation, \texttt{JAX} traces these functions to construct a computational graph, enabling automatic gradient computation and backpropagation.
+The discrete reset of \cref{eq:adex3} breaks this graph: as discussed in \cref{sec:bg:sg:vanishing-gradients}, the Heaviside derivative is zero almost everywhere, so gradients through spike events vanish.
+
+\paragraph{Implementation Details}\label{sec:method:surrogate-gradients:implementation}
+To overcome this limitation, we employ surrogate gradients \cite{Neftci2019}: the forward pass uses the original Heaviside function to maintain correct spike dynamics, while the backward pass substitutes its derivative with a smooth surrogate.
+We implement this in \texttt{JAX} via \texttt{jax.custom\_vjp}, which attaches a hand-written vector--Jacobian product to the otherwise non-differentiable spike indicator.
+All three surrogates introduced in \cref{sec:bg:sg:surrogate-gradients} --- sigmoid (\cref{eq:sigmoid-surrogate}), exponential (\cref{eq:exponential-surrogate}), and SuperSpike (\cref{eq:superspike-surrogate}) --- are available as drop-in choices; unless stated otherwise, experiments use the sigmoid surrogate with $\beta = 5.0$.
+
+We further reformulate the conditional reset from a discrete selection
+\begin{equation}
+    v_{\text{new}} = \begin{cases} v_{\text{reset}} & \text{if spike} \\ v & \text{otherwise} \end{cases}
+\end{equation}
+to a continuous, differentiable form
+\begin{equation}
+    v_{\text{new}} = s \cdot v_{\text{reset}} + (1 - s) \cdot v,
+\end{equation}
+where $s = H(v - v_{\text{th}})$ is the spike indicator.
+In the forward pass $s$ is $0$ or $1$ exactly (the hard Heaviside $H$), so this expression is numerically equivalent to the discrete selection above and the recorded spike trace $s(t)\in\{0,1\}$ is binary --- the continuous-blend form exists only so that JAX's \texttt{custom\_vjp} can route a smooth gradient (the surrogate derivative $\varphi_\beta$) through the reset on the backward pass.
+
+This approach can easily be applied to the existing \gls{LIF} (\texttt{Fire\-Surrogate}) and Izhikevich models in \texttt{Jax\-ley},
+not only to the newly implemented \gls{AdEx} model (\texttt{AdEx\-Surro\-gate}).
+
+\paragraph{Implementation Verification}\label{sec:method:surrogate-gradients:verification}
+To verify the surrogate gradient implementation, we need to show what the surrogate is actually for: restoring non-zero gradients through spike events.
+We construct a minimal test case modelled after the demonstration in Neftci et al.~\cite{Neftci2019} and split it into two checks.
+First, \emph{forward equivalence}: by construction of \texttt{custom\_vjp} the surrogate slope $\beta$ enters only the backward rule, so \texttt{AdExSurrogate} and the standard \texttt{AdEx} channel evaluate the same hard Heaviside and same hard reset.
+We confirm this empirically by running both channels on the three Naud parameter sets and comparing spike counts and spike times.
+
+Second, \emph{gradient existence}.
+A short simulation is run with a step current strong enough to elicit several spikes, and we use the negative spike count $\mathcal{L} = -\sum_t s(t)$ as a toy loss; for each surrogate variant (sigmoid, exponential, SuperSpike) we compute $\partial \mathcal{L} / \partial \theta$ under \texttt{AdExSurrogate} and compare against the same gradient computed with the standard \texttt{AdEx} channel.
+The recorded spike output is the indicator $\mathds{1}[v \geq v_{\text{th}}]$, which is piecewise constant in $v$, so under standard autodiff the hard channel necessarily returns a structural zero with respect to \emph{every} parameter --- any non-zero gradient under the surrogate channel therefore demonstrates that the \texttt{custom\_vjp} rule is wired correctly and that gradients propagate through spike events as intended.
+We pick \texttt{v\_threshold} as the trainable parameter because its expected sign is unambiguous: $\partial \mathcal{L} / \partial v_{\text{th}} > 0$, since raising the detection threshold drops spikes and increases the loss.
+\Cref{fig:surr_grads} shows the three surrogate kernels overlaid on the hard threshold; numerical results are reported in \cref{sec:results:verification:surrogate}.
+
+Together, the two checks establish what the implementation is supposed to do:
+the forward pass behaves indistinguishably from the standard \gls{AdEx} model, while the backward pass replaces a structurally zero gradient with a finite one.
+Whether the resulting gradients are \emph{useful} for optimization --- their magnitude, their support over the voltage range, and their behaviour under long simulation horizons --- is a separate question, and one that the rest of this thesis is largely concerned with.
+
+% Results figures sourced at the end of Methods so they float to the top of the first Results pages (one full-width float per page)
+\begin{figure*}[t]
+  \begin{center}
+    \includegraphics[width=\textwidth]{figures/adex_comparison_combined.pdf}
+  \end{center}
+  \caption{Comparison of our \texttt{Jaxley} \gls{AdEx} implementation against Brian2 across three reference parameter sets.
+Left to right: tonic, adaptation and original parameters.
+Tonic and adaptation parameters refer to the parameters provided by \cite{Naud2008}, original parameters are the parameters used in the original AdEx paper \cite{Brette2005}.
+Top row shows the simulated voltage traces;
+note that when the threshold is reached, the voltage is reset within the same time step --- a behaviour that becomes important when thinking about loss functions later on.
+Second row displays the adaptation current $w$.
+Last row compares the spike timings between \texttt{Brian2} and \texttt{Jaxley}.}\label{fig:brian_comparison}
+\end{figure*}
+
+\begin{figure*}[t]
+  \begin{center}
+    \includegraphics[width=\textwidth]{figures/walltime_standalone_spectrum.pdf}
+  \end{center}
+  \caption{Per-run \gls{AdEx} integration walltime across the full spectrum of Brian2 configurations, as a function of the number of integration steps $N = T/\Delta t$ (error bars are $\pm$std over $20$ repeats, often smaller than the markers).
+  \textbf{(a)} Absolute walltime (log--log): Jaxley (forward Euler, warm in-process compute) against Brian2 in its default runtime/Cython mode and its best-case compiled \texttt{cpp\_standalone} device.
+  \emph{C++ loop} is the standalone binary's self-reported integration time; \emph{run() wall} additionally pays per-call process spawn and result I/O.
+  All curves scale linearly in $N$; the vertical offset to the runtime/Cython curve is the $\sim\!10^2\times$ per-run gap of \cref{tab:walltime}.
+  \textbf{(b)} The corresponding Jaxley speedup $t_\mathrm{Brian2}/t_\mathrm{Jaxley}$ (log $y$) against each configuration.}\label{fig:walltime-scaling}
+\end{figure*}
+

@@ -1,0 +1,42 @@
+\section{Conclusions and Future work}\label{ch:conclusionsAndFutureWork}
+%\subsection{Conclusions}\label{sec:conclusions}
+Simplified neuron models remain a key tool for large-scale biophysical brain simulations.
+To fit those models efficiently we aimed to replace sampling-based optimization using a surrogate gradient construction to enable gradient-based algorithms.
+We successfully implemented the \gls{AdEx} model using the Jaxley framework and contributed it to the project.
+We matched runtime performance of highly optimized, target-compiled C++ code of a Brian2 reference implementation and performed $\sim$200$\times$ faster than the default Python implementation.
+Because \texttt{Jaxley} leverages \texttt{JAX}, the model supports CPU, GPU and TPU as target platforms without any code changes.
+This powers large-scale simulations and model-fitting applications regardless of the choice of optimizer.
+
+Gradient-based fitting did not match the derivative-free counterpart across 2700 runs in any of the spiking regimes.
+Our systematic benchmark showed that gradient-based fitting is currently not viable for \gls{AdEx},
+even with the state-of-the-art stabilization techniques used for \gls{HH}-model fitting.
+This verdict comes with one revealing exception:
+within the subthreshold regime, gradient-based fitting outperformed derivative-free Nelder-Mead with a convergence rate of $80\%$ vs $53\%$.
+This indicates that propagating gradient information through the spike mechanism remains the key challenge.
+
+We investigated the resulting challenges when adapting loss functions from derivative-free methods to gradient-based methods.
+One important finding is that biases introduced by softness parameters do not seem to affect derivative-free methods.
+However, the shape of the error surface can affect gradient-based methods more due to ridges or missing gradient information in regions where the neuron is silent.
+Specifically, voltage-based losses like \gls{MSE} fail structurally.
+MSE prefers flat, silent traces to slightly misaligned spikes, which makes it unusable for spike-train fitting.
+Feature-based losses escape that problem but introduce design challenges and complications like error surfaces with hard ridges that block gradient descent or many settings that require hand-tuning.
+
+%\subsection{Future Work}\label{sec:future-work}
+
+\Cref{sec:discussion:forward} already mentioned investigating the use of different (differentiable) neuron models.
+In the context of surrogate-gradient based optimization, this would allow us to better understand the contribution of surrogate biases.
+
+A second very interesting future work topic would be designing and evaluating different loss functions.
+Investigating efforts that might have been established in signal processing, different areas of \gls{ML},
+or other research areas could lead to interesting transfer applications.
+Better understanding the effect of loss functions when gradient-based optimization works well
+(e.g. in the context of using \gls{HH}-type models) might provide valuable insights.
+In the context of feature-based losses we mentioned the problem of too many hyperparameters.
+This is made worse when taking feature weighting into account --- this is a problem of multi-objective optimization.
+Pareto fronts have not been explored or discussed in the context of this work due to time constraints.
+
+Analysing different stabilization techniques to reduce vanishing/exploding gradients could 
+most likely improve the qualitative results of this method.
+Using multi-trace optimization could help with the under-constrained fundamental problem of fitting the \gls{AdEx}
+model to spike timings, which is an essential next step in the task of neuron model fitting.
+

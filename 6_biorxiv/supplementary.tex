@@ -1,0 +1,166 @@
+%  CONFIGURE NEW SINGLE-PAGE FORMAT (from template 02_Article_Supplementary.tex)
+
+\onecolumn % go back to one column
+\fancyhead{} % make sure we get no headers
+\renewcommand{\floatpagefraction}{0.1}
+\lfoot[\bSupInf]{\dAuthor}
+\rfoot[\dAuthor]{\cSupInf}
+\newpage
+
+\captionsetup*{format=largeformat} % make figure legend slightly larger than in the paper
+\setcounter{figure}{0} % reset figure counter for Supp. Figures
+\setcounter{table}{0} % reset table counter for Supp. Tables
+\setcounter{equation}{0} % reset equation counter for Supp. Equations
+\makeatletter
+\renewcommand{\thefigure}{S\@arabic\c@figure} % make Figure legend start with Figure S
+\renewcommand{\thetable}{S\@arabic\c@table} % make Table legend start with Table S
+\makeatother
+\def\theequation{S\arabic{equation}}
+
+%  APPENDIX CONTENT (from 2_thesis/main.tex)
+
+\appendix
+\section{Figures and Tables}
+
+\subsection{Detailed Experiment Configuration}
+\begin{table*}[h]
+\centering
+\caption{Method configurations for the recovery-radius benchmark. The three gradient methods share an identical optimizer, surrogate, and parameter-transform setup; they differ only in the loss function. \texttt{nm\_guarino} optimizes the same soft Guarino loss with Nelder--Mead, evaluating but not consuming the surrogate gradient. \texttt{nm\_guarino\_hard} optimizes the same loss composition with \emph{hard} feature extraction (threshold-crossing spike detection on both simulated and target traces), so the soft-feature hyperparameters $\tau$, $\beta$, $\beta_v$ vanish from its configuration.}
+\label{tab:training-params}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Parameter} & \texttt{grad\_mse} & \texttt{grad\_guarino} & \texttt{grad\_vanrossum} & \texttt{nm\_guarino} & \texttt{nm\_guarino\_hard} \\
+\midrule
+\multicolumn{6}{l}{\textit{Optimizer}} \\
+Algorithm                 & \multicolumn{3}{c}{Polyak SGD}                                & \multicolumn{2}{c}{Nelder--Mead} \\
+Learning rate             & \multicolumn{3}{c}{$0.001$}                                   & \multicolumn{2}{c}{---} \\
+Polyak $(\alpha,\beta)$   & \multicolumn{3}{c}{$(0.8,\,0.6)$}                             & \multicolumn{2}{c}{---} \\
+Steps / max function evals & \multicolumn{3}{c}{25 gradient steps}                         & \multicolumn{2}{c}{50 evals} \\
+NM tolerances $(x_{\text{atol}}, f_{\text{atol}})$ & \multicolumn{3}{c}{---}                & \multicolumn{2}{c}{$(10^{-4},\,10^{-4})$, adaptive} \\
+Parameter transform       & \multicolumn{3}{c}{sigmoid (\cref{sec:method:opt:stabilization:sigmoid})} & \multicolumn{2}{c}{box-bounded} \\
+\midrule
+\multicolumn{6}{l}{\textit{Surrogate gradient (gradient methods only)}} \\
+Surrogate type            & \multicolumn{3}{c}{SuperSpike (\cref{eq:superspike-surrogate})} & \multicolumn{2}{c}{not consumed} \\
+Surrogate slope $\beta$   & \multicolumn{3}{c}{$6.0$}                                     & \multicolumn{2}{c}{---} \\
+\midrule
+\multicolumn{6}{l}{\textit{Loss-specific parameters}} \\
+Feature extraction        & ---   & soft    & ---     & soft    & hard \\
+MSE: normalize            & False & ---     & ---     & ---     & --- \\
+MSE: voltage clamp        & none  & ---     & ---     & ---     & --- \\
+Guarino: feature temp.\ $\tau$ & --- & $0.3$ & ---   & $0.3$   & --- \\
+Guarino: sigmoid sharpness $\beta$ & --- & $10.0$ & --- & $10.0$ & --- \\
+Guarino: validity $\beta_v$ & --- & $10.0$ & ---    & $10.0$  & --- \\
+Guarino: spike-count weight & --- & $0.1$ & ---     & $0.0$   & $0.0$ \\
+Guarino: missing-feature penalty & --- & $3.0$ & --- & $3.0$  & $3.0$ \\
+Van Rossum: kernel $\tau$ & ---   & ---     & $8$\,ms & ---   & --- \\
+Van Rossum: subthreshold $\lambda_{\text{sub}}$ & --- & --- & $0.3$ & --- & --- \\
+\midrule
+\multicolumn{6}{l}{\textit{Simulation (shared)}} \\
+Time step $\Delta t$       & \multicolumn{5}{c}{$0.025$\,ms} \\
+Total / stimulus duration & \multicolumn{5}{c}{$100\,$ms / $90\,$ms (5\,ms delay)} \\
+Spike threshold            & \multicolumn{5}{c}{$0$\,mV} \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{Loss Landscape Analysis}\label{sec:app:loss}
+To characterize the optimization problem independently of any particular training run, we computed each of the four loss functions on a dense two-parameter grid ($20 \times 20 = 400$ points per pair) for 28 parameter pairs, for a total of $11{,}200$ simulations and $\sim$3.8\,h of compute.
+The remaining parameters were held at the default initial values of \cref{tab:adex_params}.
+
+\newgeometry{total={130mm,247mm},left=40mm,top=25mm} % thesis text width (130 mm) so the landscape-grid figures keep their thesis size
+\onecolumn % re-apply single column after the geometry change
+
+\begin{figure*}[h]
+  \centering
+  \begin{subfigure}{\textwidth}
+    \includegraphics[width=\textwidth]{figures/mse_loss_landscape_grid.pdf}
+    \caption{Loss landscape.}\label{fig:results:mse-loss-landscape}
+  \end{subfigure}
+  \begin{subfigure}{\textwidth}
+    \includegraphics[width=\textwidth]{figures/mse_grad_landscape_grid.pdf}
+    \caption{Gradient landscape.}\label{fig:results:mse-grad-landscape}
+  \end{subfigure}
+  \caption{The MSE loss landscape --- even in these simplified conditions where only two parameters at a time are changed ---
+is characterized by lots of local minima. Some parameter combinations are also characterized by long shallow valleys.}
+\end{figure*}
+
+\begin{figure*}[h]
+  \centering
+  \begin{subfigure}{\textwidth}
+    \includegraphics[width=\textwidth]{figures/soft-dtw_loss_landscape_grid.pdf}
+    \caption{Loss landscape.}\label{fig:results:sdtw-loss-landscape}
+  \end{subfigure}
+  \begin{subfigure}{\textwidth}
+    \includegraphics[width=\textwidth]{figures/soft-dtw_grad_landscape_grid.pdf}
+    \caption{Gradient landscape.}\label{fig:results:sdtw-grad-landscape}
+  \end{subfigure}
+  \caption{When observing the \gls{SDTW} loss landscape, we identify very thin and deep valleys containing the global minimum.
+This correlates with the observation, that \gls{SDTW} was only able to recover very small parameter perturbations.
+For larger perturbations, gradients were close to 0, which can be explained by the large loss plateaus visible.}
+\end{figure*}
+
+\begin{figure*}[h]
+  \centering
+  \begin{subfigure}{\textwidth}
+    \includegraphics[width=\textwidth]{figures/vanrossum_loss_landscape_grid.pdf}
+    \caption{Loss landscape.}\label{fig:results:vanrossum-loss-landscape}
+  \end{subfigure}
+  \begin{subfigure}{\textwidth}
+    \includegraphics[width=\textwidth]{figures/vanrossum_grad_landscape_grid.pdf}
+    \caption{Gradient landscape.}\label{fig:results:vanrossum-grad-landscape}
+  \end{subfigure}
+  \caption{The Van Rossum loss promises to be a more interesting candidate based on these loss landscape plots.
+For example, the local minima are less pronounced than in the \gls{MSE} landscape, even though still present.
+The global-minimum valleys tend to be less narrow compared to \gls{SDTW}; however, they still tend to be surrounded by large loss plateaus.}
+\end{figure*}
+
+\begin{figure*}[h]
+  \centering
+  \begin{subfigure}{\textwidth}
+    \includegraphics[width=\textwidth]{figures/guarino_loss_landscape_grid.pdf}
+    \caption{Loss landscape.}\label{fig:results:guarino-loss-landscape}
+  \end{subfigure}
+  \begin{subfigure}{\textwidth}
+    \includegraphics[width=\textwidth]{figures/guarino_grad_landscape_grid.pdf}
+    \caption{Gradient landscape.}\label{fig:results:guarino-grad-landscape}
+  \end{subfigure}
+  \caption{The feature-based loss shares lots of similarities with the Van-Rossum loss.
+It seems to be the most resistant against local minima in this testing configuration.
+However, it shares the large loss plateaus which could indicate small-to-zero gradients for ill conditioned initial parameters.}
+\end{figure*}
+
+\clearpage
+\subsection{Additional Results Figures}
+Supporting figures for \cref{ch:results}.
+
+\begin{figure}[H]
+  \begin{center}
+    \includegraphics[width=\textwidth]{figures/surrogate_vs_non-surrogate_comparison}
+  \end{center}
+  \caption{Comparison of \texttt{AdEx} (black, solid) and \texttt{AdExSurrogate} (red, dashed; sigmoid surrogate, $\beta = 25$) on the three Naud parameter sets.
+    Top row shows membrane potential over time. Bottom row compares the corresponding spike trains.
+    Both channels produce identical voltage traces and identical spike times as expected.}\label{fig:surrogate-channel-verification}
+\end{figure}
+\clearpage
+
+\begin{figure}[p]
+  \begin{center}
+    \includegraphics[width=\textwidth]{figures/loss_landscape_focus_vanrossum_a_tau_w_grad2d_superspike_10.pdf}
+  \end{center}
+  \caption{Van Rossum bound-normalized gradient field on the $a$--$\tau_w$ plane in the \texttt{adaptation} scenario (ground truth $a=2$\,nS, $\tau_w=300$\,ms).
+SuperSpike surrogate, $\beta=10$.
+The colour scale spans six orders of magnitude in bound-normalized sensitivity, but the quiver is dominated by the horizontal component throughout: $|\partial\mathcal{L}/\partial a \cdot \Delta a| \gg |\partial\mathcal{L}/\partial \tau_w \cdot \Delta \tau_w|$ across the whole slice.}\label{fig:vanrossum-a-tauw}
+\end{figure}
+\clearpage
+
+\begin{figure}[p]
+  \begin{center}
+    \includegraphics[width=\textwidth]{figures/subthreshold_fit_quality.pdf}
+  \end{center}
+  \caption{Fit quality over all subthreshold runs.
+  Left: final \gls{MSE} on a clean re-simulation (log scale) --- gradient descent reaches lower loss.
+  Right: mean bound-normalized parameter-recovery error --- the two methods are indistinguishable, with gradient descent if anything slightly worse.
+  Lower loss does not imply better parameter recovery: the subthreshold loss is degenerate in $\{C_m, E_L, g_L\}$.}\label{fig:subthreshold-fit-quality}
+\end{figure}

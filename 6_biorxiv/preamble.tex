@@ -1,0 +1,58 @@
+%% Packages and settings ported from the thesis preamble
+%% (2_thesis/main.tex, lib/includes.tex, lib/includes-after-hyperref.tex, lib/defines.tex).
+%% Packages already loaded by theme/bioRxiv.cls (amsmath, amssymb, xcolor, babel, inputenc,
+%% siunitx, caption, hyperref, cleveref, titlesec, graphicx, fancyhdr, geometry) are not reloaded.
+
+%% Sectioning depth as in the thesis (chapter..subsubsection -> section..paragraph)
+\setcounter{secnumdepth}{4}
+\setcounter{tocdepth}{4}
+
+%% Maths
+\usepackage{mathtools}
+\usepackage{dsfont}            % \mathds
+
+%% Tables and figures
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{makecell}
+\usepackage{array}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{placeins}
+\usepackage{cuted}             % strip: column-spanning display equations that are too wide for one column
+\usepackage{lscape}            % landscape table in the supplementary information
+
+%% Text
+\usepackage{xurl}
+\usepackage{csquotes}
+\usepackage{enumitem}
+\usepackage{perpage}
+\usepackage[perpage,symbol]{footmisc}
+\sisetup{locale=US}
+
+%% Hyphenation limits as in the thesis
+\hyphenpenalty=9000
+\tolerance=5000
+
+%% Bibliography (identical to the thesis)
+\usepackage[language=english,style=ieee,citestyle=numeric-comp,sorting=none,backend=biber]{biblatex}
+\addbibresource{references.bib}
+\renewcommand*{\bibfont}{\normalfont\sffamily\fontsize{7}{9}\selectfont}
+
+%% Must come after hyperref (loaded by the class)
+\usepackage{doi}
+
+%% Thesis \subsubsection is now \paragraph: give cleveref the same name the thesis printed
+\crefname{paragraph}{section}{sections}
+\Crefname{paragraph}{Section}{Sections}
+
+%% Undo the class's negative caption skip so stacked full-width floats do not collide
+\setlength{\belowcaptionskip}{0pt}
+
+%% At most one full-width float per page (the class allows four stacked at the top)
+\setcounter{dbltopnumber}{1}
+
+%% Acronyms: same definitions and first-use expansion as the thesis, no printed list
+\usepackage[acronym, nomain, nonumberlist]{glossaries-extra}
+\input{lib/acronyms}
+\glsdisablehyper

@@ -1,0 +1,37 @@
+\section{Introduction}
+\label{ch:introduction}
+
+In the last century, studying and modelling neurons has been seen as the gateway of understanding the brain in its entirety.
+%\iwarning{The introduction opens informally (``gateway of understanding the brain in its entirety'', ``\dots{}20 years ago'' below). Consider a more precise, formal framing for an academic introduction.}
+What first started with very simple \gls{LIF}-models, quickly became proving ground for more complex and more sophisticated ideas.
+Lack of computational resources has been a primary driver for why simplified neuron models were still developed, because they promised to be the only way to really model parts of the brain on super-computers 20 years ago.
+With the steady increase in computing power, the research community shifted focus from those models in favour of more sophisticated \gls{HH}-type models, which require more computational resources to simulate and to fit parameters to.
+However, the idea of simulating the brain as whole has remained an unreachable goal for many decades, until now.
+
+Computational power has reached whole new levels, and using computationally less intensive simplified models might be the key step to perform whole brain simulations.
+Adaptive models like \gls{AdEx} can faithfully capture the firing behaviour of diverse neuron types and therefore promise to be a prime candidate for realistic large-scale simulations.
+However, this needs very fast and efficient, reliable, and effective optimization methods to fit neuron models to experimental data.
+Due to the non-differentiable nature of simplified models, optimization methods like grid search or evolutionary algorithms are used instead of gradient methods.
+
+In this work, we investigate whether surrogate gradient techniques can enable gradient-based parameter estimation for simplified neuron models.
+Specifically, we ask:
+\begin{enumerate}
+  \item can surrogate gradients produce useful parameter updates for the \gls{AdEx} model,
+  \item what loss function design is required to achieve successful optimization and
+  \item where does gradient-based fitting fail relative to derivative-free methods, and why?
+\end{enumerate}
+To investigate this, we make the following contributions:
+\begin{enumerate}
+  \item We implement a surrogate gradient-enabled \gls{AdEx} model within the state-of-the-art \texttt{Jaxley} framework, enabling gradient-based parameter optimization.
+  \item We investigate loss function requirements and compare voltage-based \gls{MSE}, feature-based and distance-based losses.
+  \item We systematically test the robustness of the gradient-based optimization, measuring spike timing accuracy using a coincidence factor metric.
+  \item We show that gradient-fitting does not transfer to \gls{AdEx} from differentiable \gls{HH}-type models, and we address the potential failure modes.
+\end{enumerate}
+Further work is needed to enable efficient and effective parameter optimization using gradient-based optimization.
+
+In this work we bridge two worlds: gradient-based optimization and the simplified neuron models used in biophysical simulation.
+\Cref{ch:background} gives the necessary background and \cref{ch:relwork} surveys the related work.
+\Cref{ch:methods} describes how we optimize and evaluate the \gls{AdEx} model: the loss functions we compare, the training setup, and the recovery-based benchmarks.
+It closes with our first contribution (\cref{ch:implementation}) --- a differentiable \gls{AdEx} model in \texttt{Jaxley}, together with the surrogate-gradient variant that makes gradient-based fitting possible.
+\Cref{ch:results} reports our findings and \cref{ch:discussion} interprets them.
+We conclude in \cref{ch:conclusionsAndFutureWork} with future work and ethical considerations.

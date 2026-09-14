@@ -1,0 +1,83 @@
+%% bioRxiv preprint version of the master thesis
+%% Template: github.com/quantixed/manuscript-templates (theme/bioRxiv.cls, GPL-3.0, locally modified)
+%% Build: latexmk -pdf main.tex   (pdflatex + biber)
+
+\PassOptionsToPackage{dvipsnames, svgnames, table}{xcolor}
+%% select between bioRxiv style or submission style by commenting either line
+\documentclass[twocolumn]{theme/bioRxiv}
+% \documentclass[submit]{theme/bioRxiv}
+
+%% forces sans serif
+\renewcommand\familydefault{\sfdefault}
+
+\input{preamble}
+
+\hypersetup{
+  pdftitle    = {Surrogate Gradients for Gradient-Based Parameter Estimation in Simplified Neuron Models},
+  pdfauthor   = {Paul Mayer, Alexander Kozlov},
+  pdfkeywords = {Gradient Descent, Integrate-and-Fire Model, Simplified Neuron Model, Surrogate Gradients, Parameter Estimation, Automatic Differentiation}
+}
+
+\begin{document}
+
+\leadauthor{Mayer}
+
+\title{Surrogate Gradients for Gradient-Based Parameter Estimation in Simplified Neuron Models\\[0.4em]
+{\Large\mdseries Where Gradient-Based Fitting Fails, and Where It Does Not}}
+\shorttitle{Surrogate Gradients for Gradient-Based Parameter Estimation in Simplified Neuron Models}
+
+\author[1,\Letter]{Paul Mayer}
+\author[1]{Alexander Kozlov}
+\affil[1]{Department of Computer Science, School of Electrical Engineering and Computer Science (EECS), KTH Royal Institute of Technology, Stockholm, Sweden}
+\date{}
+
+\maketitle
+
+\begin{abstract}
+Simplified spiking neuron models such as the Adaptive Exponential Integrate-and-Fire (AdEx)
+model reproduce the firing behaviour of diverse neuron types at a fraction of the cost of biophysically detailed models,
+making them attractive for large-scale brain simulation.
+Fitting their parameters to recordings, however, still relies on derivative-free search such as grid search or
+evolutionary algorithms, because the discrete spike-and-reset mechanism renders these models non-differentiable.
+Surrogate gradients, used in deep spiking networks, replace the spike derivative with a smooth approximation on the backward pass.
+Whether they also enable efficient gradient-based parameter estimation for single simplified neurons is untested.
+
+We implement a differentiable AdEx model with a surrogate-gradient variant in the Jaxley framework.
+The implementation is on par with target-compiled C++ Brian2 code while remaining end-to-end differentiable, \texttt{vmap}-batchable and GPU/TPU-portable.
+It is 200 times faster than Brian2's default runtime mode.
+
+Across a recovery-radius benchmark of $2{,}700$ paired runs,
+gradient-based fitting never matched a gradient-free Nelder--Mead baseline.
+At subthreshold levels, gradient descent instead beats Nelder--Mead.
+The obstacle is therefore the spike mechanism and the loss geometry it induces, not gradient descent itself.
+\end{abstract}
+
+\begin{keywords}
+Gradient Descent, Integrate-and-Fire Model, Simplified Neuron Model, Surrogate Gradients, Parameter Estimation, Automatic Differentiation
+\end{keywords}
+
+\begin{corrauthor}
+pmayer\at kth.se
+\end{corrauthor}
+
+%\tableofcontents
+%\markboth{}{} % clear the running header set by the TOC
+
+\glsresetall
+
+\input{sections/1_introduction}
+\input{sections/2_background}
+\input{sections/3_related_work}
+\input{sections/5_methodology}
+\input{sections/6_results}
+\input{sections/7_discussion}
+\input{sections/8_conclusion}
+
+\input{sections/acknowledgements}
+
+\printbibliography[heading=bibintoc]
+
+%% Supplementary information (thesis appendix) -- comment out to build the main text only
+\input{supplementary}
+
+\end{document}
